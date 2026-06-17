@@ -1,0 +1,21 @@
+# Keil build outputs
+Objects/
+Listings/
+
+# Large vendor/reference materials
+1-书籍配套例程-F103VE指南者_20240202/
+*.pdf
+*.rar
+
+# Local/editor/cache files
+Tools/__pycache__/
+__pycache__/
+*.pyc
+*.bak
+*.tmp
+
+# User-specific Keil GUI state
+*.uvguix.*
+
+# Local build logs
+BuildLogs/
