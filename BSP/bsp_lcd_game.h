@@ -21,6 +21,8 @@
 #define COLOR_GRAY         0x8410U
 #define COLOR_DARK         0x18E3U
 #define COLOR_ORANGE       0xFD20U
+#define COLOR_PURPLE       0x780FU
+#define COLOR_LIME         0xAFE5U
 
 void lcd_game_init(void);
 void lcd_game_init_trace(void (*trace_fn)(uint8_t stage));
@@ -30,9 +32,17 @@ void lcd_backlight_set(uint8_t on);
 void lcd_draw_text(uint16_t x, uint16_t y, const char *text, uint16_t color, uint16_t bg);
 void lcd_draw_number(uint16_t x, uint16_t y, uint32_t number, uint16_t color, uint16_t bg);
 void lcd_draw_cell(uint8_t x, uint8_t y, uint16_t color);
+void lcd_draw_snake_head(uint8_t x, uint8_t y, uint8_t dir);
+void lcd_draw_snake_body(uint8_t x, uint8_t y);
+void lcd_draw_food(uint8_t x, uint8_t y);
+void lcd_draw_obstacle(uint8_t x, uint8_t y);
 void lcd_draw_board(uint32_t score, uint32_t high_score);
+void lcd_draw_board_ex(uint32_t score, uint32_t high_score, const char *mode);
 void lcd_update_score(uint32_t score, uint32_t high_score);
+void lcd_update_status(uint32_t score, uint32_t high_score, uint32_t duration);
 void lcd_show_start(uint32_t high_score);
+void lcd_show_start_ex(uint32_t high_score, const char *mode);
 void lcd_show_game_over(uint32_t score, uint32_t high_score);
+void lcd_show_game_over_ex(uint32_t score, uint32_t high_score, uint32_t duration, const char *reason);
 
 #endif

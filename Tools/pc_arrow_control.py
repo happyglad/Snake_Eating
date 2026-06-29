@@ -44,7 +44,7 @@ def main():
         except IOError:
             pass
         print(f"Connected to {args.port} at {args.baud}.")
-        print("Use arrow keys to move, Enter to start/restart, Esc to quit.")
+        print("Use arrow keys to move, Enter to start/restart, B/M to switch mode, Esc to quit.")
         while True:
             if not msvcrt.kbhit():
                 time.sleep(0.005)
@@ -59,6 +59,9 @@ def main():
                     ser.flush()
             elif ch == b"\r":
                 ser.write(b"S")
+                ser.flush()
+            elif ch in (b"b", b"B", b"m", b"M"):
+                ser.write(b"B")
                 ser.flush()
             elif ch == b"\x1b":
                 print("Exit.")

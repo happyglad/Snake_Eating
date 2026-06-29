@@ -457,12 +457,15 @@ static const uint8_t *glyph_for(char ch)
     static const uint8_t eight[5] = {0x36,0x49,0x49,0x49,0x36};
     static const uint8_t nine[5] = {0x06,0x49,0x49,0x29,0x1E};
     static const uint8_t A[5] = {0x7E,0x11,0x11,0x11,0x7E};
+    static const uint8_t B[5] = {0x7F,0x49,0x49,0x49,0x36};
     static const uint8_t C[5] = {0x3E,0x41,0x41,0x41,0x22};
+    static const uint8_t D[5] = {0x7F,0x41,0x41,0x22,0x1C};
     static const uint8_t E[5] = {0x7F,0x49,0x49,0x49,0x41};
     static const uint8_t G[5] = {0x3E,0x41,0x49,0x49,0x7A};
     static const uint8_t H[5] = {0x7F,0x08,0x08,0x08,0x7F};
     static const uint8_t I[5] = {0x00,0x41,0x7F,0x41,0x00};
     static const uint8_t K[5] = {0x7F,0x08,0x14,0x22,0x41};
+    static const uint8_t L[5] = {0x7F,0x40,0x40,0x40,0x40};
     static const uint8_t M[5] = {0x7F,0x02,0x0C,0x02,0x7F};
     static const uint8_t N[5] = {0x7F,0x04,0x08,0x10,0x7F};
     static const uint8_t O[5] = {0x3E,0x41,0x41,0x41,0x3E};
@@ -470,7 +473,10 @@ static const uint8_t *glyph_for(char ch)
     static const uint8_t R[5] = {0x7F,0x09,0x19,0x29,0x46};
     static const uint8_t S[5] = {0x46,0x49,0x49,0x49,0x31};
     static const uint8_t T[5] = {0x01,0x01,0x7F,0x01,0x01};
+    static const uint8_t U[5] = {0x3F,0x40,0x40,0x40,0x3F};
     static const uint8_t V[5] = {0x1F,0x20,0x40,0x20,0x1F};
+    static const uint8_t W[5] = {0x7F,0x20,0x18,0x20,0x7F};
+    static const uint8_t Y[5] = {0x07,0x08,0x70,0x08,0x07};
 
     if (ch >= 'a' && ch <= 'z') {
         ch = (char)(ch - 'a' + 'A');
@@ -480,10 +486,10 @@ static const uint8_t *glyph_for(char ch)
     case '3': return three; case '4': return four; case '5': return five;
     case '6': return six; case '7': return seven; case '8': return eight;
     case '9': return nine; case ':': return colon; case ' ': return space;
-    case 'A': return A; case 'C': return C; case 'E': return E; case 'G': return G;
-    case 'H': return H; case 'I': return I; case 'M': return M; case 'N': return N;
+    case 'A': return A; case 'B': return B; case 'C': return C; case 'D': return D; case 'E': return E; case 'G': return G;
+    case 'H': return H; case 'I': return I; case 'L': return L; case 'M': return M; case 'N': return N;
     case 'K': return K; case 'O': return O; case 'P': return P; case 'R': return R; case 'S': return S;
-    case 'T': return T; case 'V': return V; default: return space;
+    case 'T': return T; case 'U': return U; case 'V': return V; case 'W': return W; case 'Y': return Y; default: return space;
     }
 }
 
@@ -551,14 +557,77 @@ void lcd_draw_cell(uint8_t x, uint8_t y, uint16_t color)
                   color);
 }
 
+void lcd_draw_snake_head(uint8_t x, uint8_t y, uint8_t dir)
+{
+    uint16_t px = (uint16_t)(BOARD_X + x * CELL_SIZE + 1U);
+    uint16_t py = (uint16_t)(BOARD_Y + y * CELL_SIZE + 1U);
+    uint16_t eye1_x = (uint16_t)(px + 3U);
+    uint16_t eye1_y = (uint16_t)(py + 3U);
+    uint16_t eye2_x = (uint16_t)(px + 7U);
+    uint16_t eye2_y = (uint16_t)(py + 3U);
+
+    lcd_fill_rect(px, py, CELL_SIZE - 2U, CELL_SIZE - 2U, COLOR_GREEN);
+    if (dir == 0U) {
+        eye1_x = (uint16_t)(px + 3U); eye1_y = (uint16_t)(py + 2U);
+        eye2_x = (uint16_t)(px + 7U); eye2_y = (uint16_t)(py + 2U);
+    } else if (dir == 1U) {
+        eye1_x = (uint16_t)(px + 3U); eye1_y = (uint16_t)(py + 7U);
+        eye2_x = (uint16_t)(px + 7U); eye2_y = (uint16_t)(py + 7U);
+    } else if (dir == 2U) {
+        eye1_x = (uint16_t)(px + 2U); eye1_y = (uint16_t)(py + 3U);
+        eye2_x = (uint16_t)(px + 2U); eye2_y = (uint16_t)(py + 7U);
+    } else {
+        eye1_x = (uint16_t)(px + 7U); eye1_y = (uint16_t)(py + 3U);
+        eye2_x = (uint16_t)(px + 7U); eye2_y = (uint16_t)(py + 7U);
+    }
+    lcd_fill_rect(eye1_x, eye1_y, 2U, 2U, COLOR_BLACK);
+    lcd_fill_rect(eye2_x, eye2_y, 2U, 2U, COLOR_BLACK);
+}
+
+void lcd_draw_snake_body(uint8_t x, uint8_t y)
+{
+    uint16_t px = (uint16_t)(BOARD_X + x * CELL_SIZE + 1U);
+    uint16_t py = (uint16_t)(BOARD_Y + y * CELL_SIZE + 1U);
+    lcd_fill_rect(px, py, CELL_SIZE - 2U, CELL_SIZE - 2U, COLOR_CYAN);
+    lcd_fill_rect((uint16_t)(px + 2U), (uint16_t)(py + 2U), CELL_SIZE - 6U, CELL_SIZE - 6U, COLOR_LIME);
+}
+
+void lcd_draw_food(uint8_t x, uint8_t y)
+{
+    uint16_t px = (uint16_t)(BOARD_X + x * CELL_SIZE + 1U);
+    uint16_t py = (uint16_t)(BOARD_Y + y * CELL_SIZE + 1U);
+    lcd_fill_rect(px, py, CELL_SIZE - 2U, CELL_SIZE - 2U, COLOR_BLACK);
+    lcd_fill_rect((uint16_t)(px + 3U), (uint16_t)(py + 2U), 5U, 7U, COLOR_RED);
+    lcd_fill_rect((uint16_t)(px + 5U), py, 2U, 2U, COLOR_GREEN);
+    lcd_fill_rect((uint16_t)(px + 2U), (uint16_t)(py + 4U), 7U, 3U, COLOR_ORANGE);
+}
+
+void lcd_draw_obstacle(uint8_t x, uint8_t y)
+{
+    uint16_t px = (uint16_t)(BOARD_X + x * CELL_SIZE + 1U);
+    uint16_t py = (uint16_t)(BOARD_Y + y * CELL_SIZE + 1U);
+    lcd_fill_rect(px, py, CELL_SIZE - 2U, CELL_SIZE - 2U, COLOR_GRAY);
+    lcd_fill_rect((uint16_t)(px + 1U), (uint16_t)(py + 1U), CELL_SIZE - 4U, 2U, COLOR_WHITE);
+    lcd_fill_rect((uint16_t)(px + 2U), (uint16_t)(py + 5U), CELL_SIZE - 6U, 2U, COLOR_DARK);
+}
+
 void lcd_draw_board(uint32_t score, uint32_t high_score)
+{
+    lcd_draw_board_ex(score, high_score, "NORMAL");
+}
+
+void lcd_draw_board_ex(uint32_t score, uint32_t high_score, const char *mode)
 {
     lcd_fill_rect(0, 0, g_lcd_width, 40, COLOR_BLACK);
     lcd_fill_rect(0, 0, g_lcd_width, 34, COLOR_DARK);
-    lcd_draw_text(8, 10, "SCORE:", COLOR_WHITE, COLOR_DARK);
-    lcd_draw_number(84, 10, score, COLOR_YELLOW, COLOR_DARK);
-    lcd_draw_text(132, 10, "HIGH:", COLOR_WHITE, COLOR_DARK);
-    lcd_draw_number(190, 10, high_score, COLOR_CYAN, COLOR_DARK);
+    lcd_draw_text(4, 4, "S:", COLOR_WHITE, COLOR_DARK);
+    lcd_draw_number(28, 4, score, COLOR_YELLOW, COLOR_DARK);
+    lcd_draw_text(84, 4, "H:", COLOR_WHITE, COLOR_DARK);
+    lcd_draw_number(108, 4, high_score, COLOR_CYAN, COLOR_DARK);
+    lcd_draw_text(4, 22, "M:", COLOR_WHITE, COLOR_DARK);
+    lcd_draw_text(28, 22, mode, COLOR_ORANGE, COLOR_DARK);
+    lcd_draw_text(144, 22, "T:", COLOR_WHITE, COLOR_DARK);
+    lcd_draw_number(168, 22, 0U, COLOR_GREEN, COLOR_DARK);
 
     lcd_fill_rect(BOARD_X, BOARD_Y,
                   GRID_COLS * CELL_SIZE,
@@ -573,28 +642,54 @@ void lcd_draw_board(uint32_t score, uint32_t high_score)
 
 void lcd_update_score(uint32_t score, uint32_t high_score)
 {
-    lcd_fill_rect(84, 10, 48, 14, COLOR_DARK);
-    lcd_draw_number(84, 10, score, COLOR_YELLOW, COLOR_DARK);
-    lcd_fill_rect(190, 10, 48, 14, COLOR_DARK);
-    lcd_draw_number(190, 10, high_score, COLOR_CYAN, COLOR_DARK);
+    lcd_update_status(score, high_score, 0U);
+}
+
+void lcd_update_status(uint32_t score, uint32_t high_score, uint32_t duration)
+{
+    lcd_fill_rect(28, 4, 54, 14, COLOR_DARK);
+    lcd_draw_number(28, 4, score, COLOR_YELLOW, COLOR_DARK);
+    lcd_fill_rect(108, 4, 54, 14, COLOR_DARK);
+    lcd_draw_number(108, 4, high_score, COLOR_CYAN, COLOR_DARK);
+    lcd_fill_rect(168, 22, 48, 14, COLOR_DARK);
+    lcd_draw_number(168, 22, duration, COLOR_GREEN, COLOR_DARK);
 }
 
 void lcd_show_start(uint32_t high_score)
 {
+    lcd_show_start_ex(high_score, "NORMAL");
+}
+
+void lcd_show_start_ex(uint32_t high_score, const char *mode)
+{
     lcd_clear(COLOR_BLACK);
-    lcd_draw_text(90, 88, "SNAKE", COLOR_GREEN, COLOR_BLACK);
-    lcd_draw_text(54, 128, "PRESS ENTER", COLOR_WHITE, COLOR_BLACK);
-    lcd_draw_text(78, 164, "HIGH:", COLOR_CYAN, COLOR_BLACK);
-    lcd_draw_number(142, 164, high_score, COLOR_YELLOW, COLOR_BLACK);
+    lcd_fill_rect(0, 0, g_lcd_width, 46, COLOR_DARK);
+    lcd_draw_text(84, 16, "SNAKE", COLOR_GREEN, COLOR_DARK);
+    lcd_draw_text(36, 74, "SERIAL CONTROL", COLOR_CYAN, COLOR_BLACK);
+    lcd_draw_text(36, 106, "ENTER START", COLOR_WHITE, COLOR_BLACK);
+    lcd_draw_text(36, 138, "B MODE BLOCK", COLOR_ORANGE, COLOR_BLACK);
+    lcd_draw_text(36, 170, "M:", COLOR_WHITE, COLOR_BLACK);
+    lcd_draw_text(72, 170, mode, COLOR_YELLOW, COLOR_BLACK);
+    lcd_draw_text(36, 202, "HIGH:", COLOR_CYAN, COLOR_BLACK);
+    lcd_draw_number(100, 202, high_score, COLOR_YELLOW, COLOR_BLACK);
 }
 
 void lcd_show_game_over(uint32_t score, uint32_t high_score)
 {
-    lcd_fill_rect(24, 96, 192, 108, COLOR_BLACK);
-    lcd_fill_rect(28, 100, 184, 100, COLOR_DARK);
-    lcd_draw_text(66, 112, "GAME OVER", COLOR_RED, COLOR_DARK);
-    lcd_draw_text(66, 146, "SCORE:", COLOR_WHITE, COLOR_DARK);
-    lcd_draw_number(142, 146, score, COLOR_YELLOW, COLOR_DARK);
-    lcd_draw_text(78, 170, "HIGH:", COLOR_CYAN, COLOR_DARK);
-    lcd_draw_number(142, 170, high_score, COLOR_YELLOW, COLOR_DARK);
+    lcd_show_game_over_ex(score, high_score, 0U, "HIT");
+}
+
+void lcd_show_game_over_ex(uint32_t score, uint32_t high_score, uint32_t duration, const char *reason)
+{
+    lcd_fill_rect(16, 82, 208, 142, COLOR_BLACK);
+    lcd_fill_rect(20, 86, 200, 134, COLOR_DARK);
+    lcd_draw_text(62, 98, "GAME OVER", COLOR_RED, COLOR_DARK);
+    lcd_draw_text(38, 126, "WHY:", COLOR_WHITE, COLOR_DARK);
+    lcd_draw_text(90, 126, reason, COLOR_ORANGE, COLOR_DARK);
+    lcd_draw_text(38, 150, "SCORE:", COLOR_WHITE, COLOR_DARK);
+    lcd_draw_number(114, 150, score, COLOR_YELLOW, COLOR_DARK);
+    lcd_draw_text(38, 174, "HIGH:", COLOR_CYAN, COLOR_DARK);
+    lcd_draw_number(102, 174, high_score, COLOR_YELLOW, COLOR_DARK);
+    lcd_draw_text(38, 198, "TIME:", COLOR_GREEN, COLOR_DARK);
+    lcd_draw_number(102, 198, duration, COLOR_YELLOW, COLOR_DARK);
 }

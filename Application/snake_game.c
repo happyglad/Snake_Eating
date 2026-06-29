@@ -9,6 +9,7 @@
 #define BASE_INTERVAL_MS  220U
 #define MIN_INTERVAL_MS   80U
 #define SPEEDUP_FACTOR    3U   /* Decrease interval by 3ms per 10 points (1 food) */
+#define OBSTACLE_COUNT    16U
 
 typedef struct {
     uint8_t x;
@@ -21,12 +22,30 @@ typedef enum {
     STATE_GAME_OVER
 } GameState;
 
+typedef enum {
+    GAME_MODE_NORMAL = 0,
+    GAME_MODE_BLOCKS
+} GameMode;
+
+typedef enum {
+    END_REASON_NONE = 0,
+    END_REASON_WALL,
+    END_REASON_BODY,
+    END_REASON_BLOCK
+} EndReason;
+
 /* Game variables */
 static Point g_snake[MAX_SNAKE_LEN];
 static uint16_t g_snake_len;
 static Point g_food_pos;
+static const Point g_obstacles[OBSTACLE_COUNT] = {
+    {3, 3}, {4, 3}, {5, 3}, {14, 3}, {15, 3}, {16, 3},
+    {3, 11}, {4, 11}, {5, 11}, {14, 11}, {15, 11}, {16, 11},
+    {9, 5}, {10, 5}, {9, 9}, {10, 9}
+};
 
 static GameState g_game_state = STATE_START_SCREEN;
+static GameMode g_game_mode = GAME_MODE_NORMAL;
 static SnakeDir g_current_dir = DIR_RIGHT;
 static SnakeDir g_next_dir = DIR_RIGHT;
 static uint8_t g_dir_changed_this_tick = 0;
@@ -35,6 +54,9 @@ static uint32_t g_score = 0;
 static uint32_t g_high_score = 0;
 static uint32_t g_rand_seed = 0x5A5A5A5AUL;
 static uint32_t g_last_tick_time = 0;
+static uint32_t g_game_start_time = 0;
+static uint32_t g_last_status_second = 0;
+static EndReason g_end_reason = END_REASON_NONE;
 static volatile uint8_t g_start_requested = 0;
 
 /* Pseudo-random generator (LCG) */
@@ -71,6 +93,59 @@ static uint8_t is_point_on_snake_range(Point p, uint16_t count)
     return 0U;
 }
 
+static const char *game_mode_name(void)
+{
+    return (g_game_mode == GAME_MODE_BLOCKS) ? "BLOCK" : "NORMAL";
+}
+
+static const char *game_mode_event_name(void)
+{
+    return (g_game_mode == GAME_MODE_BLOCKS) ? "blocks" : "normal";
+}
+
+static const char *end_reason_name(EndReason reason)
+{
+    switch (reason) {
+        case END_REASON_WALL:  return "WALL";
+        case END_REASON_BODY:  return "BODY";
+        case END_REASON_BLOCK: return "BLOCK";
+        default:               return "END";
+    }
+}
+
+static const char *end_reason_event_name(EndReason reason)
+{
+    switch (reason) {
+        case END_REASON_WALL:  return "wall";
+        case END_REASON_BODY:  return "body";
+        case END_REASON_BLOCK: return "block";
+        default:               return "end";
+    }
+}
+
+static uint32_t game_duration_seconds(void)
+{
+    if (g_game_state == STATE_START_SCREEN) {
+        return 0U;
+    }
+    return (millis() - g_game_start_time) / 1000U;
+}
+
+static uint8_t is_point_on_obstacle(Point p)
+{
+    uint16_t i;
+    if (g_game_mode != GAME_MODE_BLOCKS) {
+        return 0U;
+    }
+
+    for (i = 0; i < OBSTACLE_COUNT; i++) {
+        if (g_obstacles[i].x == p.x && g_obstacles[i].y == p.y) {
+            return 1U;
+        }
+    }
+    return 0U;
+}
+
 /* Spawns food at a random free cell */
 static void spawn_food(void)
 {
@@ -85,10 +160,10 @@ static void spawn_food(void)
         if (timeout > 1000UL) {
             break;
         }
-    } while (is_point_on_snake(p));
+    } while (is_point_on_snake(p) || is_point_on_obstacle(p));
 
     g_food_pos = p;
-    lcd_draw_cell(g_food_pos.x, g_food_pos.y, COLOR_RED);
+    lcd_draw_food(g_food_pos.x, g_food_pos.y);
 }
 
 extern void usart1_send_string(const char *str);
@@ -111,6 +186,49 @@ static void game_usart_send_number(uint32_t num)
     }
 }
 
+static void send_start_event(void)
+{
+    usart1_send_string("\r\nSNAKE,START,mode=");
+    usart1_send_string(game_mode_event_name());
+    usart1_send_string("\r\n");
+}
+
+static void send_food_event(void)
+{
+    usart1_send_string("\r\nSNAKE,FOOD,score=");
+    game_usart_send_number(g_score);
+    usart1_send_string(",length=");
+    game_usart_send_number(g_snake_len);
+    usart1_send_string(",duration=");
+    game_usart_send_number(game_duration_seconds());
+    usart1_send_string("\r\n");
+}
+
+static void send_end_event(void)
+{
+    usart1_send_string("\r\nSNAKE,END,score=");
+    game_usart_send_number(g_score);
+    usart1_send_string(",high=");
+    game_usart_send_number(g_high_score);
+    usart1_send_string(",duration=");
+    game_usart_send_number(game_duration_seconds());
+    usart1_send_string(",reason=");
+    usart1_send_string(end_reason_event_name(g_end_reason));
+    usart1_send_string("\r\n");
+}
+
+static void draw_obstacles(void)
+{
+    uint16_t i;
+    if (g_game_mode != GAME_MODE_BLOCKS) {
+        return;
+    }
+
+    for (i = 0; i < OBSTACLE_COUNT; i++) {
+        lcd_draw_obstacle(g_obstacles[i].x, g_obstacles[i].y);
+    }
+}
+
 /* Start a new game round */
 static void start_new_game(void)
 {
@@ -119,6 +237,7 @@ static void start_new_game(void)
     
     g_score = 0;
     g_snake_len = INITIAL_SNAKE_LEN;
+    g_end_reason = END_REASON_NONE;
     
     /* Start snake in the middle grid, horizontal */
     g_snake[0].x = 9; g_snake[0].y = 7;
@@ -142,7 +261,7 @@ static void start_new_game(void)
     ta = millis();
     lcd_clear(COLOR_BLACK);
     tb = millis();
-    lcd_draw_board(g_score, g_high_score);
+    lcd_draw_board_ex(g_score, g_high_score, game_mode_name());
     tc = millis();
     
     usart1_send_string("\r\n[Profile] start_new_game clear: ");
@@ -151,22 +270,28 @@ static void start_new_game(void)
     game_usart_send_number(tc - tb);
     usart1_send_string(" ms\r\n");
     
-    /* Draw snake: head green, body cyan */
-    lcd_draw_cell(g_snake[0].x, g_snake[0].y, COLOR_GREEN);
+    draw_obstacles();
+
+    /* Draw snake: head has direction marker, body uses a softer fill */
+    lcd_draw_snake_head(g_snake[0].x, g_snake[0].y, (uint8_t)g_current_dir);
     for (i = 1; i < g_snake_len; i++) {
-        lcd_draw_cell(g_snake[i].x, g_snake[i].y, COLOR_CYAN);
+        lcd_draw_snake_body(g_snake[i].x, g_snake[i].y);
     }
     
     spawn_food();
     
     g_last_tick_time = millis();
+    g_game_start_time = g_last_tick_time;
+    g_last_status_second = 0U;
     g_game_state = STATE_PLAYING;
+    send_start_event();
 }
 
 /* Handle game-over transition */
-static void trigger_game_over(void)
+static void trigger_game_over(EndReason reason)
 {
     g_game_state = STATE_GAME_OVER;
+    g_end_reason = reason;
     
     /* Save high score to flash if updated */
     if (g_score > g_high_score) {
@@ -174,7 +299,8 @@ static void trigger_game_over(void)
         flash_save_high_score(g_high_score);
     }
     
-    lcd_show_game_over(g_score, g_high_score);
+    send_end_event();
+    lcd_show_game_over_ex(g_score, g_high_score, game_duration_seconds(), end_reason_name(g_end_reason));
     feedback_game_over();
 }
 
@@ -182,9 +308,10 @@ static void trigger_game_over(void)
 static void move_snake(void)
 {
     Point head = g_snake[0];
+    Point old_tail = g_snake[g_snake_len - 1];
+    Point new_head;
     int16_t next_x = (int16_t)head.x;
     int16_t next_y = (int16_t)head.y;
-    Point old_tail = g_snake[g_snake_len - 1];
     uint8_t ate_food = 0;
     uint16_t i;
     
@@ -202,17 +329,21 @@ static void move_snake(void)
     
     /* Boundary check */
     if (next_x < 0 || next_x >= (int16_t)GRID_COLS || next_y < 0 || next_y >= (int16_t)GRID_ROWS) {
-        trigger_game_over();
+        trigger_game_over(END_REASON_WALL);
         return;
     }
     
-    Point new_head;
     new_head.x = (uint8_t)next_x;
     new_head.y = (uint8_t)next_y;
     
     /* Normal movement may legally enter the current tail cell because it moves away. */
     if (is_point_on_snake_range(new_head, (uint16_t)(g_snake_len - 1U))) {
-        trigger_game_over();
+        trigger_game_over(END_REASON_BODY);
+        return;
+    }
+
+    if (is_point_on_obstacle(new_head)) {
+        trigger_game_over(END_REASON_BLOCK);
         return;
     }
     
@@ -223,7 +354,8 @@ static void move_snake(void)
             g_snake_len++;
         }
         g_score += 10U;
-        lcd_update_score(g_score, g_high_score);
+        lcd_update_status(g_score, g_high_score, game_duration_seconds());
+        send_food_event();
         feedback_food();
     }
     
@@ -235,14 +367,14 @@ static void move_snake(void)
     
     if (ate_food) {
         /* Redraw: color new head green and turn old head into cyan body */
-        lcd_draw_cell(g_snake[0].x, g_snake[0].y, COLOR_GREEN);
-        lcd_draw_cell(g_snake[1].x, g_snake[1].y, COLOR_CYAN);
+        lcd_draw_snake_head(g_snake[0].x, g_snake[0].y, (uint8_t)g_current_dir);
+        lcd_draw_snake_body(g_snake[1].x, g_snake[1].y);
         spawn_food();
     } else {
         /* Normal step: clear old tail cell, draw new head, and turn old head into body */
         lcd_draw_cell(old_tail.x, old_tail.y, COLOR_BLACK);
-        lcd_draw_cell(g_snake[1].x, g_snake[1].y, COLOR_CYAN);
-        lcd_draw_cell(g_snake[0].x, g_snake[0].y, COLOR_GREEN);
+        lcd_draw_snake_body(g_snake[1].x, g_snake[1].y);
+        lcd_draw_snake_head(g_snake[0].x, g_snake[0].y, (uint8_t)g_current_dir);
     }
 }
 
@@ -254,24 +386,31 @@ void snake_game_init(void)
     g_high_score = flash_load_high_score();
     g_game_state = STATE_START_SCREEN;
     g_start_requested = 0;
-    lcd_show_start(g_high_score);
+    lcd_show_start_ex(g_high_score, game_mode_name());
 }
 
 void snake_game_on_command(char cmd)
 {
+    SnakeDir target = g_current_dir;
+    uint8_t is_valid = 0;
+
     /* Only explicit 'S' or 's' act as start/restart triggers */
     if (cmd == 'S' || cmd == 's') {
         g_start_requested = 1U;
+        return;
+    }
+
+    if ((cmd == 'B' || cmd == 'b' || cmd == 'M' || cmd == 'm') &&
+        (g_game_state == STATE_START_SCREEN || g_game_state == STATE_GAME_OVER)) {
+        g_game_mode = (g_game_mode == GAME_MODE_NORMAL) ? GAME_MODE_BLOCKS : GAME_MODE_NORMAL;
+        lcd_show_start_ex(g_high_score, game_mode_name());
         return;
     }
     
     if (g_game_state != STATE_PLAYING || g_dir_changed_this_tick) {
         return;
     }
-    
-    SnakeDir target = g_current_dir;
-    uint8_t is_valid = 0;
-    
+
     switch (cmd) {
         case 'U':
         case 'u':
@@ -313,13 +452,14 @@ void snake_game_on_command(char cmd)
 
 void snake_game_turn_left_or_start(void)
 {
+    SnakeDir target = g_next_dir;
+
     if (g_game_state == STATE_START_SCREEN || g_game_state == STATE_GAME_OVER) {
         g_start_requested = 1U;
         return;
     }
     
     if (g_game_state == STATE_PLAYING && !g_dir_changed_this_tick) {
-        SnakeDir target = g_next_dir;
         switch (g_next_dir) {
             case DIR_UP:    target = DIR_LEFT;  break;
             case DIR_LEFT:  target = DIR_DOWN;  break;
@@ -333,13 +473,14 @@ void snake_game_turn_left_or_start(void)
 
 void snake_game_turn_right_or_start(void)
 {
+    SnakeDir target = g_next_dir;
+
     if (g_game_state == STATE_START_SCREEN || g_game_state == STATE_GAME_OVER) {
         g_start_requested = 1U;
         return;
     }
     
     if (g_game_state == STATE_PLAYING && !g_dir_changed_this_tick) {
-        SnakeDir target = g_next_dir;
         switch (g_next_dir) {
             case DIR_UP:    target = DIR_RIGHT; break;
             case DIR_RIGHT: target = DIR_DOWN;  break;
@@ -353,6 +494,8 @@ void snake_game_turn_right_or_start(void)
 
 void snake_game_tick(void)
 {
+    uint32_t elapsed;
+
     /* Handle start/restart requests */
     if (g_start_requested) {
         g_start_requested = 0U;
@@ -378,5 +521,11 @@ void snake_game_tick(void)
     if (millis() - g_last_tick_time >= interval) {
         g_last_tick_time = millis();
         move_snake();
+    }
+
+    elapsed = game_duration_seconds();
+    if (elapsed != g_last_status_second) {
+        g_last_status_second = elapsed;
+        lcd_update_status(g_score, g_high_score, elapsed);
     }
 }
