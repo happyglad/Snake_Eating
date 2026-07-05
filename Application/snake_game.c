@@ -271,6 +271,7 @@ static void start_new_game(void)
     usart1_send_string(" ms\r\n");
     
     draw_obstacles();
+    lcd_draw_swipe_controls();
 
     /* Draw snake: head has direction marker, body uses a softer fill */
     lcd_draw_snake_head(g_snake[0].x, g_snake[0].y, (uint8_t)g_current_dir);
@@ -448,6 +449,11 @@ void snake_game_on_command(char cmd)
         g_next_dir = target;
         g_dir_changed_this_tick = 1U;
     }
+}
+
+uint8_t snake_game_is_playing(void)
+{
+    return (g_game_state == STATE_PLAYING) ? 1U : 0U;
 }
 
 void snake_game_turn_left_or_start(void)

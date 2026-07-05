@@ -109,6 +109,16 @@ class SnakeStats:
                 "raw": raw,
             })
 
+    def add_serial_line(self, raw):
+        with self.lock:
+            self.current["last_event"] = raw
+            self.current["updated_at"] = time.time()
+            self.events.append({
+                "time": time.strftime("%H:%M:%S"),
+                "name": "SERIAL",
+                "raw": raw,
+            })
+
 
 def int_field(fields, key, default):
     try:
@@ -336,10 +346,15 @@ def serial_worker(ser, stats, stop_event):
         while "\n" in buffer:
             line, buffer = buffer.split("\n", 1)
             line = line.strip()
+            if not line:
+                continue
             parsed = parse_snake_line(line)
             if parsed:
                 event_name, fields = parsed
                 stats.apply_event(event_name, fields, line)
+                print(line)
+            else:
+                stats.add_serial_line(line)
                 print(line)
 
 

@@ -36,6 +36,8 @@ void lcd_draw_snake_head(uint8_t x, uint8_t y, uint8_t dir);
 void lcd_draw_snake_body(uint8_t x, uint8_t y);
 void lcd_draw_food(uint8_t x, uint8_t y);
 void lcd_draw_obstacle(uint8_t x, uint8_t y);
+void lcd_draw_touch_controls(void);
+void lcd_draw_swipe_controls(void);
 void lcd_draw_board(uint32_t score, uint32_t high_score);
 void lcd_draw_board_ex(uint32_t score, uint32_t high_score, const char *mode);
 void lcd_update_score(uint32_t score, uint32_t high_score);

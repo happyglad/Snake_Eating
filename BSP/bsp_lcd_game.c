@@ -611,6 +611,28 @@ void lcd_draw_obstacle(uint8_t x, uint8_t y)
     lcd_fill_rect((uint16_t)(px + 2U), (uint16_t)(py + 5U), CELL_SIZE - 6U, 2U, COLOR_DARK);
 }
 
+static void lcd_draw_button(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const char *label, uint16_t color)
+{
+    lcd_fill_rect(x, y, w, h, COLOR_GRAY);
+    lcd_fill_rect((uint16_t)(x + 2U), (uint16_t)(y + 2U), (uint16_t)(w - 4U), (uint16_t)(h - 4U), COLOR_DARK);
+    lcd_draw_text((uint16_t)(x + 10U), (uint16_t)(y + 15U), label, color, COLOR_DARK);
+}
+
+void lcd_draw_touch_controls(void)
+{
+    lcd_fill_rect(0, 224, g_lcd_width, 96, COLOR_BLACK);
+    lcd_draw_button(0, 272, 80, 48, "MODE", COLOR_ORANGE);
+    lcd_fill_rect(80, 272, 80, 48, COLOR_BLACK);
+    lcd_draw_button(160, 272, 80, 48, "START", COLOR_YELLOW);
+}
+
+void lcd_draw_swipe_controls(void)
+{
+    lcd_fill_rect(0, 224, g_lcd_width, 96, COLOR_BLACK);
+    lcd_fill_rect(0, 224, g_lcd_width, 96, COLOR_DARK);
+    lcd_fill_rect(2, 226, (uint16_t)(g_lcd_width - 4U), 92, COLOR_BLACK);
+}
+
 void lcd_draw_board(uint32_t score, uint32_t high_score)
 {
     lcd_draw_board_ex(score, high_score, "NORMAL");
@@ -665,13 +687,13 @@ void lcd_show_start_ex(uint32_t high_score, const char *mode)
     lcd_clear(COLOR_BLACK);
     lcd_fill_rect(0, 0, g_lcd_width, 46, COLOR_DARK);
     lcd_draw_text(84, 16, "SNAKE", COLOR_GREEN, COLOR_DARK);
-    lcd_draw_text(36, 74, "SERIAL CONTROL", COLOR_CYAN, COLOR_BLACK);
-    lcd_draw_text(36, 106, "ENTER START", COLOR_WHITE, COLOR_BLACK);
-    lcd_draw_text(36, 138, "B MODE BLOCK", COLOR_ORANGE, COLOR_BLACK);
-    lcd_draw_text(36, 170, "M:", COLOR_WHITE, COLOR_BLACK);
-    lcd_draw_text(72, 170, mode, COLOR_YELLOW, COLOR_BLACK);
-    lcd_draw_text(36, 202, "HIGH:", COLOR_CYAN, COLOR_BLACK);
-    lcd_draw_number(100, 202, high_score, COLOR_YELLOW, COLOR_BLACK);
+    lcd_draw_text(36, 70, "SERIAL TOUCH", COLOR_CYAN, COLOR_BLACK);
+    lcd_draw_text(36, 102, "ENTER START", COLOR_WHITE, COLOR_BLACK);
+    lcd_draw_text(36, 134, "M:", COLOR_WHITE, COLOR_BLACK);
+    lcd_draw_text(72, 134, mode, COLOR_YELLOW, COLOR_BLACK);
+    lcd_draw_text(36, 166, "HIGH:", COLOR_CYAN, COLOR_BLACK);
+    lcd_draw_number(100, 166, high_score, COLOR_YELLOW, COLOR_BLACK);
+    lcd_draw_touch_controls();
 }
 
 void lcd_show_game_over(uint32_t score, uint32_t high_score)
@@ -692,4 +714,5 @@ void lcd_show_game_over_ex(uint32_t score, uint32_t high_score, uint32_t duratio
     lcd_draw_number(102, 174, high_score, COLOR_YELLOW, COLOR_DARK);
     lcd_draw_text(38, 198, "TIME:", COLOR_GREEN, COLOR_DARK);
     lcd_draw_number(102, 198, duration, COLOR_YELLOW, COLOR_DARK);
+    lcd_draw_touch_controls();
 }

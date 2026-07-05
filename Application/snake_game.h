@@ -24,6 +24,11 @@ void snake_game_init(void);
 void snake_game_on_command(char cmd);
 
 /**
+ * @brief Return non-zero while a round is actively playing.
+ */
+uint8_t snake_game_is_playing(void);
+
+/**
  * @brief Handle left turn event or start game (mapped to KEY1).
  */
 void snake_game_turn_left_or_start(void);

@@ -83,7 +83,6 @@ void boot_signal(uint8_t count)
 void feedback_food(void)
 {
     led_on();
-    pin_high(BEEP_PORT, BEEP_PIN);
     delay_ms(35);
     led_off();
     pin_low(BEEP_PORT, BEEP_PIN);
@@ -94,7 +93,6 @@ void feedback_game_over(void)
     uint8_t i;
     for (i = 0; i < 3U; i++) {
         led_on();
-        pin_high(BEEP_PORT, BEEP_PIN);
         delay_ms(120);
         led_off();
         pin_low(BEEP_PORT, BEEP_PIN);

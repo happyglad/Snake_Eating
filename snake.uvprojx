@@ -429,6 +429,11 @@
               <FileType>1</FileType>
               <FilePath>.\BSP\bsp_key.c</FilePath>
             </File>
+            <File>
+              <FileName>bsp_touch.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\BSP\bsp_touch.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>
