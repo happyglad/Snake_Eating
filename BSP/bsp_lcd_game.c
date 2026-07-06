@@ -1013,16 +1013,49 @@ void lcd_draw_chinese_text_32(uint16_t x, uint16_t y, const char *text, uint16_t
     }
 }
 
-static void lcd_draw_char_32x32(uint16_t x, uint16_t y, const uint8_t *matrix, uint16_t color, uint16_t bg)
+static void lcd_draw_char_32x32(uint16_t x, uint16_t y, const uint8_t *matrix, uint16_t color_fill, uint16_t color_outline, uint16_t bg)
 {
-    uint16_t i, b, j;
+    uint16_t i, j;
+    uint32_t rows[32];
+    
+    /* Load all rows into stack for fast neighbor lookups */
+    for (i = 0; i < 32U; i++) {
+        rows[i] = ((uint32_t)matrix[i << 2] << 24) |
+                  ((uint32_t)matrix[(i << 2) + 1U] << 16) |
+                  ((uint32_t)matrix[(i << 2) + 2U] << 8) |
+                  (uint32_t)matrix[(i << 2) + 3U];
+    }
+    
     lcd_set_window(x, y, x + 31U, y + 31U);
     for (i = 0; i < 32U; i++) {
-        for (b = 0; b < 4U; b++) {
-            uint8_t byte_val = matrix[(i << 2) + b];
-            for (j = 0; j < 8U; j++) {
-                if (byte_val & (0x80U >> j)) {
-                    lcd_write_data(color);
+        for (j = 0; j < 32U; j++) {
+            uint32_t mask = 0x80000000UL >> j;
+            if (rows[i] & mask) {
+                lcd_write_data(color_fill);
+            } else {
+                /* Check 8 neighbors in a 1-pixel radius */
+                uint8_t has_neighbor = 0;
+                int8_t di, dj;
+                for (di = -1; di <= 1; di++) {
+                    int16_t ni = (int16_t)i + di;
+                    if (ni >= 0 && ni < 32) {
+                        uint32_t r_val = rows[ni];
+                        for (dj = -1; dj <= 1; dj++) {
+                            int16_t nj = (int16_t)j + dj;
+                            if (nj >= 0 && nj < 32) {
+                                if (r_val & (0x80000000UL >> nj)) {
+                                    has_neighbor = 1;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (has_neighbor) {
+                        break;
+                    }
+                }
+                if (has_neighbor) {
+                    lcd_write_data(color_outline);
                 } else {
                     lcd_write_data(bg);
                 }
@@ -1031,16 +1064,44 @@ static void lcd_draw_char_32x32(uint16_t x, uint16_t y, const uint8_t *matrix, u
     }
 }
 
-static void lcd_draw_char_16x32(uint16_t x, uint16_t y, const uint8_t *matrix, uint16_t color, uint16_t bg)
+static void lcd_draw_char_16x32(uint16_t x, uint16_t y, const uint8_t *matrix, uint16_t color_fill, uint16_t color_outline, uint16_t bg)
 {
-    uint16_t i, b, j;
+    uint16_t i, j;
+    uint16_t rows[32];
+    
+    for (i = 0; i < 32U; i++) {
+        rows[i] = ((uint16_t)matrix[i << 1] << 8) | (uint16_t)matrix[(i << 1) + 1U];
+    }
+    
     lcd_set_window(x, y, x + 15U, y + 31U);
     for (i = 0; i < 32U; i++) {
-        for (b = 0; b < 2U; b++) {
-            uint8_t byte_val = matrix[(i << 1) + b];
-            for (j = 0; j < 8U; j++) {
-                if (byte_val & (0x80U >> j)) {
-                    lcd_write_data(color);
+        for (j = 0; j < 16U; j++) {
+            uint16_t mask = 0x8000U >> j;
+            if (rows[i] & mask) {
+                lcd_write_data(color_fill);
+            } else {
+                uint8_t has_neighbor = 0;
+                int8_t di, dj;
+                for (di = -1; di <= 1; di++) {
+                    int16_t ni = (int16_t)i + di;
+                    if (ni >= 0 && ni < 32) {
+                        uint16_t r_val = rows[ni];
+                        for (dj = -1; dj <= 1; dj++) {
+                            int16_t nj = (int16_t)j + dj;
+                            if (nj >= 0 && nj < 16) {
+                                if (r_val & (0x8000U >> nj)) {
+                                    has_neighbor = 1;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if (has_neighbor) {
+                        break;
+                    }
+                }
+                if (has_neighbor) {
+                    lcd_write_data(color_outline);
                 } else {
                     lcd_write_data(bg);
                 }
@@ -1060,19 +1121,21 @@ void lcd_draw_snake_title_32(uint16_t x, uint16_t y, uint16_t color, uint16_t bg
     extern const uint8_t g_snake_glyph_mao[128];
     extern const uint8_t g_snake_glyph_xian[128];
 
-    /* Draw snake head at left */
-    lcd_draw_char_16x32(4, y, g_snake_head, COLOR_GREEN, bg);
+    /* Draw snake head at left (green fill with blue outline) */
+    lcd_draw_char_16x32(4, y, g_snake_head, COLOR_GREEN, COLOR_BLUE, bg);
 
-    /* Draw characters */
-    lcd_draw_char_32x32(x,         y, g_snake_glyph_tan,  color, bg);
-    lcd_draw_char_32x32(x + 32U,   y, g_snake_glyph_chi,  color, bg);
-    lcd_draw_char_32x32(x + 64U,   y, g_snake_glyph_she,  color, bg);
-    lcd_draw_char_32x32(x + 96U,   y, g_snake_glyph_da,   color, bg);
-    lcd_draw_char_32x32(x + 128U,  y, g_snake_glyph_mao,  color, bg);
-    lcd_draw_char_32x32(x + 160U,  y, g_snake_glyph_xian, color, bg);
+    /* Draw "贪吃蛇" (cyan fill with blue outline) */
+    lcd_draw_char_32x32(x,         y, g_snake_glyph_tan,  COLOR_CYAN, COLOR_BLUE, bg);
+    lcd_draw_char_32x32(x + 32U,   y, g_snake_glyph_chi,  COLOR_CYAN, COLOR_BLUE, bg);
+    lcd_draw_char_32x32(x + 64U,   y, g_snake_glyph_she,  COLOR_CYAN, COLOR_BLUE, bg);
 
-    /* Draw snake tail at right */
-    lcd_draw_char_16x32(218, y, g_snake_tail, COLOR_GREEN, bg);
+    /* Draw "大冒险" (yellow fill with blue outline) */
+    lcd_draw_char_32x32(x + 96U,   y, g_snake_glyph_da,   COLOR_YELLOW, COLOR_BLUE, bg);
+    lcd_draw_char_32x32(x + 128U,  y, g_snake_glyph_mao,  COLOR_YELLOW, COLOR_BLUE, bg);
+    lcd_draw_char_32x32(x + 160U,  y, g_snake_glyph_xian, COLOR_YELLOW, COLOR_BLUE, bg);
+
+    /* Draw snake tail at right (green fill with blue outline) */
+    lcd_draw_char_16x32(218, y, g_snake_tail, COLOR_GREEN, COLOR_BLUE, bg);
 }
 
 void lcd_draw_item(uint8_t x, uint8_t y, uint8_t type)
