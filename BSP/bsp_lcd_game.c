@@ -9,6 +9,10 @@
 #define LCDID_UNKNOWN      0x0000U
 #define LCDID_ILI9341      0x9341U
 #define LCDID_ST7789V      0x8552U
+#define COLOR_START_BG     0x0841U
+#define COLOR_START_GRID   0x10A2U
+#define COLOR_START_PANEL  0x1082U
+#define COLOR_START_FRAME  0x39E7U
 
 static uint16_t g_lcd_id = LCDID_UNKNOWN;
 static uint8_t g_scan_mode = 0U;
@@ -16,6 +20,13 @@ static uint16_t g_lcd_width = LCD_WIDTH;
 static uint16_t g_lcd_height = LCD_HEIGHT;
 static uint8_t g_vertical_flip = 0U;
 static void (*g_lcd_trace_fn)(uint8_t stage) = 0;
+
+static void lcd_draw_start_background(void);
+static void lcd_draw_start_panel(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint8_t focus);
+static void lcd_draw_play_icon(uint16_t x, uint16_t y, uint16_t color);
+static void lcd_draw_gear_icon(uint16_t x, uint16_t y, uint16_t color);
+static void lcd_draw_trophy_icon(uint16_t x, uint16_t y);
+static void lcd_draw_softkey(uint16_t x, uint16_t y, uint16_t w);
 
 static void gpio_set_cfg(GPIO_TypeDef *port, uint32_t pin, uint32_t cfg)
 {
@@ -616,24 +627,27 @@ void lcd_draw_obstacle(uint8_t x, uint8_t y)
 
 void lcd_draw_touch_controls(void)
 {
-    lcd_fill_rect(0, 224, g_lcd_width, 96, COLOR_BLACK);
-    
-    /* MODE button */
-    lcd_fill_rect(0, 272, 80, 48, COLOR_GRAY);
-    lcd_fill_rect(2, 274, 76, 44, COLOR_DARK);
-    lcd_draw_chinese_text(24, 288, "切换", COLOR_ORANGE, COLOR_DARK);
-    
-    /* START button */
-    lcd_fill_rect(160, 272, 80, 48, COLOR_GRAY);
-    lcd_fill_rect(162, 274, 76, 44, COLOR_DARK);
-    lcd_draw_chinese_text(184, 288, "开始", COLOR_YELLOW, COLOR_DARK);
+    lcd_fill_rect(0, 224, g_lcd_width, 96, COLOR_START_BG);
+    lcd_draw_softkey(8, 272, 82);
+    lcd_fill_rect(18, 292, 10, 2, COLOR_CYAN);
+    lcd_fill_rect(18, 288, 2, 10, COLOR_CYAN);
+    lcd_draw_chinese_text(34, 288, "切换", COLOR_WHITE, COLOR_START_PANEL);
+
+    lcd_draw_softkey(150, 272, 82);
+    lcd_draw_play_icon(164, 284, COLOR_YELLOW);
+    lcd_draw_chinese_text(188, 288, "开始", COLOR_WHITE, COLOR_START_PANEL);
 }
 
 void lcd_draw_swipe_controls(void)
 {
-    lcd_fill_rect(0, 224, g_lcd_width, 96, COLOR_BLACK);
-    lcd_fill_rect(0, 224, g_lcd_width, 96, COLOR_DARK);
+    uint16_t x;
+
+    lcd_fill_rect(0, 224, g_lcd_width, 96, COLOR_START_BG);
+    for (x = 0U; x < g_lcd_width; x = (uint16_t)(x + 24U)) {
+        lcd_fill_rect(x, 224, 1U, 96U, COLOR_START_GRID);
+    }
     lcd_fill_rect(2, 226, (uint16_t)(g_lcd_width - 4U), 92, COLOR_BLACK);
+    lcd_fill_rect(4, 228, (uint16_t)(g_lcd_width - 8U), 88, COLOR_START_BG);
 }
 
 void lcd_draw_board(uint32_t score, uint32_t high_score)
@@ -645,26 +659,27 @@ void lcd_draw_board_ex(uint32_t score, uint32_t high_score, const char *mode)
 {
     const char *zh_mode = "普通";
     
-    lcd_fill_rect(0, 0, g_lcd_width, 40, COLOR_BLACK);
-    lcd_fill_rect(0, 0, g_lcd_width, 34, COLOR_DARK);
-    lcd_draw_text(4, 4, "S:", COLOR_WHITE, COLOR_DARK);
-    lcd_draw_number(28, 4, score, COLOR_YELLOW, COLOR_DARK);
-    lcd_draw_text(84, 4, "H:", COLOR_WHITE, COLOR_DARK);
-    lcd_draw_number(108, 4, high_score, COLOR_CYAN, COLOR_DARK);
-    lcd_draw_text(4, 22, "M:", COLOR_WHITE, COLOR_DARK);
+    lcd_fill_rect(0, 0, g_lcd_width, 44, COLOR_START_BG);
+    lcd_fill_rect(0, 0, g_lcd_width, 38, COLOR_START_PANEL);
+    lcd_fill_rect(0, 38, g_lcd_width, 2, COLOR_GREEN);
+    lcd_draw_text(4, 4, "S:", COLOR_WHITE, COLOR_START_PANEL);
+    lcd_draw_number(28, 4, score, COLOR_YELLOW, COLOR_START_PANEL);
+    lcd_draw_text(84, 4, "H:", COLOR_WHITE, COLOR_START_PANEL);
+    lcd_draw_number(108, 4, high_score, COLOR_CYAN, COLOR_START_PANEL);
+    lcd_draw_text(4, 22, "M:", COLOR_WHITE, COLOR_START_PANEL);
     
     if (strcmp(mode, "BLOCK") == 0) {
         zh_mode = "障碍";
     } else if (strcmp(mode, "TIME") == 0) {
         zh_mode = "限时";
     }
-    lcd_draw_chinese_text(28, 19, zh_mode, COLOR_ORANGE, COLOR_DARK);
+    lcd_draw_chinese_text(28, 19, zh_mode, COLOR_ORANGE, COLOR_START_PANEL);
     
-    lcd_draw_text(144, 22, "T:", COLOR_WHITE, COLOR_DARK);
-    lcd_draw_number(168, 22, 0U, COLOR_GREEN, COLOR_DARK);
+    lcd_draw_text(144, 22, "T:", COLOR_WHITE, COLOR_START_PANEL);
+    lcd_draw_number(168, 22, 0U, COLOR_GREEN, COLOR_START_PANEL);
     
     /* Clear active item status slot */
-    lcd_fill_rect(164, 4, 76, 16, COLOR_DARK);
+    lcd_fill_rect(164, 4, 76, 16, COLOR_START_PANEL);
 
     lcd_fill_rect(BOARD_X, BOARD_Y,
                   GRID_COLS * CELL_SIZE,
@@ -689,20 +704,96 @@ void lcd_update_status(uint32_t score, uint32_t high_score, uint32_t duration)
 
 void lcd_update_status_ex(uint32_t score, uint32_t high_score, uint32_t duration, const char *item_text, uint32_t item_sec)
 {
-    lcd_fill_rect(28, 4, 54, 14, COLOR_DARK);
-    lcd_draw_number(28, 4, score, COLOR_YELLOW, COLOR_DARK);
-    lcd_fill_rect(108, 4, 54, 14, COLOR_DARK);
-    lcd_draw_number(108, 4, high_score, COLOR_CYAN, COLOR_DARK);
-    lcd_fill_rect(168, 22, 48, 14, COLOR_DARK);
-    lcd_draw_number(168, 22, duration, COLOR_GREEN, COLOR_DARK);
+    lcd_fill_rect(28, 4, 54, 14, COLOR_START_PANEL);
+    lcd_draw_number(28, 4, score, COLOR_YELLOW, COLOR_START_PANEL);
+    lcd_fill_rect(108, 4, 54, 14, COLOR_START_PANEL);
+    lcd_draw_number(108, 4, high_score, COLOR_CYAN, COLOR_START_PANEL);
+    lcd_fill_rect(168, 22, 48, 14, COLOR_START_PANEL);
+    lcd_draw_number(168, 22, duration, COLOR_GREEN, COLOR_START_PANEL);
     
     /* Draw item status text at x=164, y=4 */
-    lcd_fill_rect(164, 4, 76, 16, COLOR_DARK);
+    lcd_fill_rect(164, 4, 76, 16, COLOR_START_PANEL);
     if (item_text && item_text[0] != '\0') {
-        lcd_draw_chinese_text(164, 4, item_text, COLOR_LIME, COLOR_DARK);
-        lcd_draw_text(196, 5, ":", COLOR_LIME, COLOR_DARK);
-        lcd_draw_number(208, 5, item_sec, COLOR_LIME, COLOR_DARK);
+        lcd_draw_chinese_text(164, 4, item_text, COLOR_LIME, COLOR_START_PANEL);
+        lcd_draw_text(196, 5, ":", COLOR_LIME, COLOR_START_PANEL);
+        lcd_draw_number(208, 5, item_sec, COLOR_LIME, COLOR_START_PANEL);
     }
+}
+
+static void lcd_draw_start_background(void)
+{
+    uint16_t x;
+    uint16_t y;
+
+    lcd_fill_rect(0, 60, g_lcd_width, 260, COLOR_BLACK);
+    for (x = 0U; x < g_lcd_width; x = (uint16_t)(x + 24U)) {
+        lcd_fill_rect(x, 60, 1U, 260U, COLOR_START_GRID);
+    }
+    for (y = 72U; y < 320U; y = (uint16_t)(y + 24U)) {
+        lcd_fill_rect(0, y, g_lcd_width, 1U, COLOR_START_GRID);
+    }
+
+    lcd_fill_rect(212, 76, 8, 8, COLOR_RED);
+    lcd_fill_rect(214, 74, 4, 2, COLOR_GREEN);
+    lcd_fill_rect(214, 78, 4, 4, COLOR_ORANGE);
+
+    lcd_fill_rect(18, 176, 14, 4, COLOR_LIME);
+    lcd_fill_rect(22, 172, 6, 12, COLOR_LIME);
+    lcd_fill_rect(20, 174, 10, 8, COLOR_GREEN);
+}
+
+static void lcd_draw_start_panel(uint16_t x, uint16_t y, uint16_t w, uint16_t h, uint8_t focus)
+{
+    uint16_t border = focus ? COLOR_CYAN : COLOR_START_FRAME;
+    uint16_t accent = focus ? COLOR_LIME : COLOR_START_GRID;
+
+    lcd_fill_rect(x, y, w, h, border);
+    lcd_fill_rect((uint16_t)(x + 2U), (uint16_t)(y + 2U),
+                  (uint16_t)(w - 4U), (uint16_t)(h - 4U), COLOR_START_PANEL);
+    lcd_fill_rect((uint16_t)(x + 5U), (uint16_t)(y + 5U),
+                  (uint16_t)(w - 10U), 1U, accent);
+    lcd_fill_rect((uint16_t)(x + 5U), (uint16_t)(y + h - 6U),
+                  (uint16_t)(w - 10U), 1U, COLOR_START_BG);
+}
+
+static void lcd_draw_play_icon(uint16_t x, uint16_t y, uint16_t color)
+{
+    lcd_fill_rect(x, (uint16_t)(y + 3U), 3U, 18U, color);
+    lcd_fill_rect((uint16_t)(x + 3U), (uint16_t)(y + 5U), 3U, 14U, color);
+    lcd_fill_rect((uint16_t)(x + 6U), (uint16_t)(y + 7U), 3U, 10U, color);
+    lcd_fill_rect((uint16_t)(x + 9U), (uint16_t)(y + 9U), 3U, 6U, color);
+    lcd_fill_rect((uint16_t)(x + 12U), (uint16_t)(y + 11U), 3U, 2U, color);
+}
+
+static void lcd_draw_gear_icon(uint16_t x, uint16_t y, uint16_t color)
+{
+    lcd_fill_rect((uint16_t)(x + 5U), y, 6U, 3U, color);
+    lcd_fill_rect((uint16_t)(x + 5U), (uint16_t)(y + 17U), 6U, 3U, color);
+    lcd_fill_rect(x, (uint16_t)(y + 5U), 3U, 10U, color);
+    lcd_fill_rect((uint16_t)(x + 13U), (uint16_t)(y + 5U), 3U, 10U, color);
+    lcd_fill_rect((uint16_t)(x + 3U), (uint16_t)(y + 3U), 10U, 14U, color);
+    lcd_fill_rect((uint16_t)(x + 6U), (uint16_t)(y + 6U), 4U, 8U, COLOR_START_PANEL);
+}
+
+static void lcd_draw_trophy_icon(uint16_t x, uint16_t y)
+{
+    lcd_fill_rect((uint16_t)(x + 4U), y, 12U, 4U, COLOR_YELLOW);
+    lcd_fill_rect((uint16_t)(x + 6U), (uint16_t)(y + 4U), 8U, 8U, COLOR_YELLOW);
+    lcd_fill_rect((uint16_t)(x + 2U), (uint16_t)(y + 5U), 4U, 4U, COLOR_ORANGE);
+    lcd_fill_rect((uint16_t)(x + 14U), (uint16_t)(y + 5U), 4U, 4U, COLOR_ORANGE);
+    lcd_fill_rect((uint16_t)(x + 8U), (uint16_t)(y + 12U), 4U, 5U, COLOR_YELLOW);
+    lcd_fill_rect((uint16_t)(x + 4U), (uint16_t)(y + 17U), 12U, 3U, COLOR_ORANGE);
+}
+
+static void lcd_draw_softkey(uint16_t x, uint16_t y, uint16_t w)
+{
+    lcd_fill_rect(x, y, w, 44U, COLOR_START_FRAME);
+    lcd_fill_rect((uint16_t)(x + 2U), (uint16_t)(y + 2U),
+                  (uint16_t)(w - 4U), 40U, COLOR_START_PANEL);
+    lcd_fill_rect((uint16_t)(x + 2U), (uint16_t)(y + 2U),
+                  (uint16_t)(w - 4U), 2U, COLOR_WHITE);
+    lcd_fill_rect((uint16_t)(x + 6U), (uint16_t)(y + 36U),
+                  (uint16_t)(w - 12U), 2U, COLOR_START_BG);
 }
 
 void lcd_show_start(uint32_t high_score)
@@ -763,110 +854,88 @@ void lcd_show_start_revamp(uint8_t focus, uint32_t high_score)
     
     /* Chinese Title: "贪吃蛇大冒险" in custom 32x32 snake-themed pixel art */
     lcd_draw_snake_title_32(10, 3, COLOR_GREEN, COLOR_DARK);
+    lcd_draw_start_background();
     
     /* Option 1: 开始游戏 */
-    lcd_fill_rect(32, 85, 176, 36, (focus == 0U) ? COLOR_DARK : COLOR_BLACK);
-    if (focus == 0U) {
-        /* Draw blue frame for focus */
-        lcd_fill_rect(32, 85, 176, 2, COLOR_CYAN);
-        lcd_fill_rect(32, 119, 176, 2, COLOR_CYAN);
-        lcd_fill_rect(32, 85, 2, 36, COLOR_CYAN);
-        lcd_fill_rect(206, 85, 2, 36, COLOR_CYAN);
-    }
-    lcd_draw_chinese_text(72, 95, "开始游戏", (focus == 0U) ? COLOR_YELLOW : COLOR_GRAY, (focus == 0U) ? COLOR_DARK : COLOR_BLACK);
+    lcd_draw_start_panel(28, 82, 184, 40, (focus == 0U));
+    lcd_draw_play_icon(48, 91, (focus == 0U) ? COLOR_YELLOW : COLOR_START_FRAME);
+    lcd_draw_chinese_text(78, 96, "开始游戏", (focus == 0U) ? COLOR_YELLOW : COLOR_WHITE, COLOR_START_PANEL);
     
     /* Option 2: 游戏设置 */
-    lcd_fill_rect(32, 135, 176, 36, (focus == 1U) ? COLOR_DARK : COLOR_BLACK);
-    if (focus == 1U) {
-        /* Draw blue frame for focus */
-        lcd_fill_rect(32, 135, 176, 2, COLOR_CYAN);
-        lcd_fill_rect(32, 169, 176, 2, COLOR_CYAN);
-        lcd_fill_rect(32, 135, 2, 36, COLOR_CYAN);
-        lcd_fill_rect(206, 135, 2, 36, COLOR_CYAN);
-    }
-    lcd_draw_chinese_text(72, 145, "游戏设置", (focus == 1U) ? COLOR_YELLOW : COLOR_GRAY, (focus == 1U) ? COLOR_DARK : COLOR_BLACK);
+    lcd_draw_start_panel(28, 132, 184, 40, (focus == 1U));
+    lcd_draw_gear_icon(48, 142, (focus == 1U) ? COLOR_YELLOW : COLOR_START_FRAME);
+    lcd_draw_chinese_text(78, 146, "游戏设置", (focus == 1U) ? COLOR_YELLOW : COLOR_WHITE, COLOR_START_PANEL);
     
     /* Render high score stats */
-    lcd_draw_chinese_text(36, 185, "最高记录:", COLOR_CYAN, COLOR_BLACK);
-    lcd_draw_number(116, 185, high_score, COLOR_YELLOW, COLOR_BLACK);
-    
-    /* Draw revamped touch controls at bottom */
-    lcd_fill_rect(0, 224, g_lcd_width, 96, COLOR_BLACK);
+    lcd_draw_start_panel(32, 184, 176, 28, 0U);
+    lcd_draw_trophy_icon(46, 188);
+    lcd_draw_chinese_text(72, 190, "最高记录:", COLOR_CYAN, COLOR_START_PANEL);
+    lcd_draw_number(152, 190, high_score, COLOR_YELLOW, COLOR_START_PANEL);
     
     /* Left button: "切换" */
-    lcd_fill_rect(0, 272, 80, 48, COLOR_GRAY);
-    lcd_fill_rect(2, 274, 76, 44, COLOR_DARK);
-    lcd_draw_chinese_text(8, 288, "切换", COLOR_WHITE, COLOR_DARK);
+    lcd_draw_softkey(8, 272, 82);
+    lcd_fill_rect(18, 292, 10, 2, COLOR_CYAN);
+    lcd_fill_rect(18, 288, 2, 10, COLOR_CYAN);
+    lcd_draw_chinese_text(34, 288, "切换", COLOR_WHITE, COLOR_START_PANEL);
     
     /* Right button: "确定" */
-    lcd_fill_rect(160, 272, 80, 48, COLOR_GRAY);
-    lcd_fill_rect(162, 274, 76, 44, COLOR_DARK);
-    lcd_draw_chinese_text(168, 288, "确定", COLOR_WHITE, COLOR_DARK);
+    lcd_draw_softkey(150, 272, 82);
+    lcd_fill_rect(166, 292, 4, 8, COLOR_LIME);
+    lcd_fill_rect(170, 296, 12, 4, COLOR_LIME);
+    lcd_draw_chinese_text(188, 288, "确定", COLOR_WHITE, COLOR_START_PANEL);
 }
 
 void lcd_show_settings(uint8_t focus, const char *mode, uint8_t items_enabled)
 {
+    const char *zh_mode = "普通";
+
     lcd_clear(COLOR_BLACK);
     
     /* Top decorative header bar */
-    lcd_fill_rect(0, 0, g_lcd_width, 46, COLOR_DARK);
-    lcd_fill_rect(0, 44, g_lcd_width, 2, COLOR_GREEN);
+    lcd_fill_rect(0, 0, g_lcd_width, 60, COLOR_DARK);
+    lcd_fill_rect(0, 58, g_lcd_width, 2, COLOR_GREEN);
     
     /* Title: "游戏设置" (32x32 size) */
-    lcd_draw_chinese_text_32(56, 7, "游戏设置", COLOR_GREEN, COLOR_DARK);
+    lcd_draw_chinese_text_32(56, 10, "游戏设置", COLOR_GREEN, COLOR_DARK);
+    lcd_draw_start_background();
     
     /* Row 0: 模式选择 */
-    lcd_fill_rect(16, 68, 208, 36, (focus == 0U) ? COLOR_DARK : COLOR_BLACK);
-    if (focus == 0U) {
-        lcd_fill_rect(16, 68, 208, 2, COLOR_CYAN);
-        lcd_fill_rect(16, 102, 208, 2, COLOR_CYAN);
-        lcd_fill_rect(16, 68, 2, 36, COLOR_CYAN);
-        lcd_fill_rect(222, 68, 2, 36, COLOR_CYAN);
-    }
-    lcd_draw_chinese_text(24, 78, "模式选择:", COLOR_WHITE, (focus == 0U) ? COLOR_DARK : COLOR_BLACK);
+    lcd_draw_start_panel(16, 74, 208, 38, (focus == 0U));
+    lcd_draw_gear_icon(28, 84, (focus == 0U) ? COLOR_YELLOW : COLOR_START_FRAME);
+    lcd_draw_chinese_text(56, 84, "模式选择:", COLOR_WHITE, COLOR_START_PANEL);
     
     /* Get mode Chinese name */
-    const char *zh_mode = "普通";
     if (strcmp(mode, "BLOCKS") == 0 || strcmp(mode, "BLOCK") == 0) {
         zh_mode = "障碍";
     } else if (strcmp(mode, "TIME_LIMIT") == 0 || strcmp(mode, "TIME") == 0) {
         zh_mode = "限时";
     }
-    lcd_draw_chinese_text(112, 78, zh_mode, COLOR_YELLOW, (focus == 0U) ? COLOR_DARK : COLOR_BLACK);
+    lcd_draw_chinese_text(144, 84, zh_mode, COLOR_YELLOW, COLOR_START_PANEL);
     
     /* Row 1: 道具开启 */
-    lcd_fill_rect(16, 114, 208, 36, (focus == 1U) ? COLOR_DARK : COLOR_BLACK);
-    if (focus == 1U) {
-        lcd_fill_rect(16, 114, 208, 2, COLOR_CYAN);
-        lcd_fill_rect(16, 148, 208, 2, COLOR_CYAN);
-        lcd_fill_rect(16, 114, 2, 36, COLOR_CYAN);
-        lcd_fill_rect(222, 114, 2, 36, COLOR_CYAN);
-    }
-    lcd_draw_chinese_text(24, 124, "道具开启:", COLOR_WHITE, (focus == 1U) ? COLOR_DARK : COLOR_BLACK);
-    lcd_draw_chinese_text(112, 124, items_enabled ? "开启" : "关闭", items_enabled ? COLOR_GREEN : COLOR_RED, (focus == 1U) ? COLOR_DARK : COLOR_BLACK);
+    lcd_draw_start_panel(16, 124, 208, 38, (focus == 1U));
+    lcd_fill_rect(32, 136, 16, 10, items_enabled ? COLOR_LIME : COLOR_RED);
+    lcd_fill_rect(36, 132, 8, 18, items_enabled ? COLOR_GREEN : COLOR_ORANGE);
+    lcd_draw_chinese_text(56, 134, "道具开启:", COLOR_WHITE, COLOR_START_PANEL);
+    lcd_draw_chinese_text(144, 134, items_enabled ? "开启" : "关闭", items_enabled ? COLOR_GREEN : COLOR_RED, COLOR_START_PANEL);
     
     /* Row 2: 返回主菜单 */
-    lcd_fill_rect(16, 160, 208, 36, (focus == 2U) ? COLOR_DARK : COLOR_BLACK);
-    if (focus == 2U) {
-        lcd_fill_rect(16, 160, 208, 2, COLOR_CYAN);
-        lcd_fill_rect(16, 194, 208, 2, COLOR_CYAN);
-        lcd_fill_rect(16, 160, 2, 36, COLOR_CYAN);
-        lcd_fill_rect(222, 160, 2, 36, COLOR_CYAN);
-    }
-    lcd_draw_chinese_text(72, 170, "返回主菜单", (focus == 2U) ? COLOR_YELLOW : COLOR_GRAY, (focus == 2U) ? COLOR_DARK : COLOR_BLACK);
-    
-    /* Touch controls at bottom */
-    lcd_fill_rect(0, 224, g_lcd_width, 96, COLOR_BLACK);
+    lcd_draw_start_panel(16, 174, 208, 38, (focus == 2U));
+    lcd_fill_rect(32, 188, 14, 3, (focus == 2U) ? COLOR_YELLOW : COLOR_START_FRAME);
+    lcd_fill_rect(32, 188, 3, 10, (focus == 2U) ? COLOR_YELLOW : COLOR_START_FRAME);
+    lcd_draw_chinese_text(72, 184, "返回主菜单", (focus == 2U) ? COLOR_YELLOW : COLOR_WHITE, COLOR_START_PANEL);
     
     /* Left button: "切换" */
-    lcd_fill_rect(0, 272, 80, 48, COLOR_GRAY);
-    lcd_fill_rect(2, 274, 76, 44, COLOR_DARK);
-    lcd_draw_chinese_text(8, 288, "切换", COLOR_WHITE, COLOR_DARK);
+    lcd_draw_softkey(8, 272, 82);
+    lcd_fill_rect(18, 292, 10, 2, COLOR_CYAN);
+    lcd_fill_rect(18, 288, 2, 10, COLOR_CYAN);
+    lcd_draw_chinese_text(34, 288, "切换", COLOR_WHITE, COLOR_START_PANEL);
     
     /* Right button: "修改" / "返回" */
-    lcd_fill_rect(160, 272, 80, 48, COLOR_GRAY);
-    lcd_fill_rect(162, 274, 76, 44, COLOR_DARK);
-    lcd_draw_chinese_text(168, 288, (focus == 2U) ? "返回" : "修改", COLOR_WHITE, COLOR_DARK);
+    lcd_draw_softkey(150, 272, 82);
+    lcd_fill_rect(166, 292, 4, 8, COLOR_LIME);
+    lcd_fill_rect(170, 296, 12, 4, COLOR_LIME);
+    lcd_draw_chinese_text(188, 288, (focus == 2U) ? "返回" : "修改", COLOR_WHITE, COLOR_START_PANEL);
 }
 
 void lcd_show_game_over(uint32_t score, uint32_t high_score)
