@@ -1121,6 +1121,8 @@ void lcd_draw_snake_title_32(uint16_t x, uint16_t y, uint16_t color, uint16_t bg
     extern const uint8_t g_snake_glyph_mao[128];
     extern const uint8_t g_snake_glyph_xian[128];
 
+    (void)color; /* Suppress unused parameter warning */
+
     /* Draw snake head at left (green fill with blue outline) */
     lcd_draw_char_16x32(4, y, g_snake_head, COLOR_GREEN, COLOR_BLUE, bg);
 
