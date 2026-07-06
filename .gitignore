@@ -9,6 +9,8 @@ Listings/
 
 # Local/editor/cache files
 Tools/__pycache__/
+Tools/snake_dashboard_data.json
+Tools/snake_dashboard_data.json.tmp
 __pycache__/
 *.pyc
 *.bak

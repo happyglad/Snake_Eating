@@ -4,6 +4,7 @@ import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from urllib.parse import urlparse
 
 try:
@@ -13,8 +14,10 @@ except ImportError:
 
 try:
     import serial
+    from serial.tools import list_ports
 except ImportError:
     serial = None
+    list_ports = None
 
 
 ARROW_MAP = {
@@ -26,8 +29,9 @@ ARROW_MAP = {
 
 
 class SnakeStats:
-    def __init__(self):
+    def __init__(self, data_file):
         self.lock = threading.Lock()
+        self.data_file = Path(data_file)
         self.current = {
             "mode": "normal",
             "score": 0,
@@ -41,11 +45,61 @@ class SnakeStats:
         }
         self.sessions = []
         self.events = []
+        self.load()
+
+    def load(self):
+        if not self.data_file.exists():
+            return
+        try:
+            with self.data_file.open("r", encoding="utf-8") as fp:
+                data = json.load(fp)
+        except (OSError, json.JSONDecodeError) as exc:
+            print(f"Warning: could not load dashboard data from {self.data_file}: {exc}")
+            return
+
+        sessions = data.get("sessions", [])
+        if not isinstance(sessions, list):
+            return
+
+        loaded = []
+        for i, row in enumerate(sessions, 1):
+            if not isinstance(row, dict):
+                continue
+            loaded.append({
+                "index": int_field(row, "index", i),
+                "mode": str(row.get("mode", "normal")),
+                "score": int_field(row, "score", 0),
+                "high": int_field(row, "high", 0),
+                "duration": int_field(row, "duration", 0),
+                "reason": str(row.get("reason", "end")),
+                "ended_at": str(row.get("ended_at", "")),
+                "ended_at_date": str(row.get("ended_at_date", "")),
+            })
+
+        self.sessions = loaded
+        best_score = max((row["score"] for row in self.sessions), default=0)
+        self.current["high"] = best_score
+
+    def save(self):
+        self.data_file.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "version": 1,
+            "saved_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "sessions": self.sessions,
+        }
+        tmp_file = self.data_file.with_suffix(self.data_file.suffix + ".tmp")
+        with tmp_file.open("w", encoding="utf-8") as fp:
+            json.dump(payload, fp, ensure_ascii=False, indent=2)
+        tmp_file.replace(self.data_file)
 
     def snapshot(self):
         with self.lock:
             sessions = list(self.sessions)
-            ranked = sorted(sessions, key=lambda row: row["score"], reverse=True)[:8]
+            ranked = sorted(
+                sessions,
+                key=lambda row: (row["score"], row["duration"], row["index"]),
+                reverse=True,
+            )[:20]
             avg_score = sum(row["score"] for row in sessions) / len(sessions) if sessions else 0
             avg_duration = sum(row["duration"] for row in sessions) / len(sessions) if sessions else 0
             return {
@@ -101,7 +155,16 @@ class SnakeStats:
                     "duration": duration,
                     "reason": reason,
                     "ended_at": time.strftime("%H:%M:%S"),
+                    "ended_at_date": time.strftime("%Y-%m-%d"),
                 })
+                try:
+                    self.save()
+                except OSError as exc:
+                    self.events.append({
+                        "time": time.strftime("%H:%M:%S"),
+                        "name": "SAVE_ERROR",
+                        "raw": f"Could not save dashboard data: {exc}",
+                    })
 
             self.events.append({
                 "time": time.strftime("%H:%M:%S"),
@@ -146,7 +209,7 @@ INDEX_HTML = """<!doctype html>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Snake Dashboard</title>
+  <title>贪吃蛇数据面板</title>
   <style>
     :root {
       color-scheme: dark;
@@ -193,6 +256,7 @@ INDEX_HTML = """<!doctype html>
       min-height: 104px;
     }
     .label { color: var(--muted); font-size: 13px; text-transform: uppercase; }
+    .hint { margin-top: 6px; color: var(--muted); font-size: 13px; line-height: 1.5; }
     .value { margin-top: 10px; font-size: 34px; font-weight: 800; }
     .green { color: var(--green); }
     .cyan { color: var(--cyan); }
@@ -230,43 +294,44 @@ INDEX_HTML = """<!doctype html>
 </head>
 <body>
   <header>
-    <h1>Snake Dashboard</h1>
-    <div class="status" id="status">Waiting for serial events</div>
+    <h1>贪吃蛇数据面板</h1>
+    <div class="status" id="status">等待串口事件</div>
   </header>
   <main>
     <section class="grid">
-      <div class="card"><div class="label">Current Score</div><div class="value yellow" id="score">0</div></div>
-      <div class="card"><div class="label">High Score</div><div class="value cyan" id="high">0</div></div>
-      <div class="card"><div class="label">Duration</div><div class="value green"><span id="duration">0</span>s</div></div>
-      <div class="card"><div class="label">Mode / State</div><div class="value" id="mode">normal</div></div>
+      <div class="card"><div class="label">当前分数</div><div class="value yellow" id="score">0</div></div>
+      <div class="card"><div class="label">历史最高分</div><div class="value cyan" id="high">0</div></div>
+      <div class="card"><div class="label">本局时长</div><div class="value green"><span id="duration">0</span>秒</div></div>
+      <div class="card"><div class="label">模式 / 状态</div><div class="value" id="mode">普通 / 空闲</div></div>
     </section>
     <section class="wide">
       <div class="card">
-        <div class="label">Highest Score Ranking</div>
+        <div class="label">最佳 20 次成绩</div>
         <table>
-          <thead><tr><th>#</th><th>Mode</th><th>Score</th><th>Time</th><th>Reason</th></tr></thead>
+          <thead><tr><th>排名</th><th>模式</th><th>分数</th><th>时长</th><th>结束时间</th><th>原因</th></tr></thead>
           <tbody id="ranking"></tbody>
         </table>
       </div>
       <div class="card">
-        <div class="label">Game Duration Statistics</div>
+        <div class="label">游戏时长统计</div>
+        <div class="hint">显示最近 10 局已结束游戏的时长，单位为秒；横条长度按这 10 局中最长时长等比例显示。</div>
         <div class="bars" id="bars"></div>
       </div>
     </section>
     <section class="wide">
       <div class="card">
-        <div class="label">Summary</div>
+        <div class="label">总体统计</div>
         <table>
           <tbody>
-            <tr><th>Games</th><td id="games">0</td></tr>
-            <tr><th>Average Score</th><td id="avgScore">0</td></tr>
-            <tr><th>Average Duration</th><td id="avgDuration">0s</td></tr>
-            <tr><th>Last Reason</th><td id="reason"></td></tr>
+            <tr><th>累计局数</th><td id="games">0</td></tr>
+            <tr><th>平均分数</th><td id="avgScore">0</td></tr>
+            <tr><th>平均时长</th><td id="avgDuration">0秒</td></tr>
+            <tr><th>上次结束原因</th><td id="reason"></td></tr>
           </tbody>
         </table>
       </div>
       <div class="card">
-        <div class="label">Serial Events</div>
+        <div class="label">串口事件</div>
         <div class="events" id="events"></div>
       </div>
     </section>
@@ -279,26 +344,38 @@ INDEX_HTML = """<!doctype html>
       document.getElementById('score').textContent = c.score;
       document.getElementById('high').textContent = c.high;
       document.getElementById('duration').textContent = c.duration;
-      document.getElementById('mode').textContent = c.mode + ' / ' + c.state;
-      document.getElementById('reason').textContent = c.reason || '';
+      document.getElementById('mode').textContent = modeText(c.mode) + ' / ' + stateText(c.state);
+      document.getElementById('reason').textContent = reasonText(c.reason);
       document.getElementById('games').textContent = data.summary.games;
       document.getElementById('avgScore').textContent = data.summary.avg_score;
-      document.getElementById('avgDuration').textContent = data.summary.avg_duration + 's';
-      document.getElementById('status').textContent = c.last_event || 'Waiting for serial events';
+      document.getElementById('avgDuration').textContent = data.summary.avg_duration + '秒';
+      document.getElementById('status').textContent = c.last_event || '等待串口事件';
 
       document.getElementById('ranking').innerHTML = data.rankings.map((row, i) =>
-        `<tr><td>${i + 1}</td><td>${row.mode}</td><td>${row.score}</td><td>${row.duration}s</td><td>${row.reason}</td></tr>`
-      ).join('') || '<tr><td colspan="5">No finished games yet</td></tr>';
+        `<tr><td>${i + 1}</td><td>${modeText(row.mode)}</td><td>${row.score}</td><td>${row.duration}秒</td><td>${row.ended_at_date || ''} ${row.ended_at || ''}</td><td>${reasonText(row.reason)}</td></tr>`
+      ).join('') || '<tr><td colspan="6">暂无已结束游戏</td></tr>';
 
       const maxDuration = Math.max(1, ...data.sessions.map(row => row.duration));
       document.getElementById('bars').innerHTML = data.sessions.slice(-10).map(row => {
         const width = Math.max(3, Math.round(row.duration * 100 / maxDuration));
-        return `<div class="bar-row"><span>#${row.index}</span><div class="bar-track"><div class="bar-fill" style="width:${width}%"></div></div><span>${row.duration}s</span></div>`;
-      }).join('') || '<div class="status">No duration data yet</div>';
+        return `<div class="bar-row"><span>#${row.index}</span><div class="bar-track"><div class="bar-fill" style="width:${width}%"></div></div><span>${row.duration}秒</span></div>`;
+      }).join('') || '<div class="status">暂无时长数据</div>';
 
       document.getElementById('events').innerHTML = data.events.slice().reverse().map(row =>
         `<div>${row.time} ${row.raw}</div>`
       ).join('');
+    }
+
+    function modeText(value) {
+      return { normal: '普通', blocks: '障碍' }[value] || value || '';
+    }
+
+    function stateText(value) {
+      return { idle: '空闲', playing: '游戏中', 'game over': '已结束' }[value] || value || '';
+    }
+
+    function reasonText(value) {
+      return { wall: '撞墙', body: '撞到自己', block: '撞到障碍', end: '结束' }[value] || value || '';
     }
     load();
     setInterval(load, 700);
@@ -389,7 +466,35 @@ def parse_args():
     parser.add_argument("--baud", type=int, default=115200)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--http-port", type=int, default=8080)
-    return parser.parse_args()
+    parser.add_argument(
+        "--data-file",
+        default=str(Path(__file__).with_name("snake_dashboard_data.json")),
+        help="JSON file used to persist finished game records.",
+    )
+    args = parser.parse_args()
+    args.port = normalize_serial_port(args.port)
+    return args
+
+
+def print_available_ports():
+    if list_ports is None:
+        return
+
+    ports = list(list_ports.comports())
+    if not ports:
+        print("No serial ports were found.")
+        return
+
+    print("Available serial ports:")
+    for port in ports:
+        print(f"  {port.device}: {port.description}")
+
+
+def normalize_serial_port(port):
+    port = port.strip()
+    if port.isdigit():
+        return "COM" + port
+    return port
 
 
 def main():
@@ -398,10 +503,18 @@ def main():
         return 1
 
     args = parse_args()
-    stats = SnakeStats()
+    stats = SnakeStats(args.data_file)
     stop_event = threading.Event()
 
-    with serial.Serial(args.port, args.baud, timeout=0) as ser:
+    try:
+        ser = serial.Serial(args.port, args.baud, timeout=0)
+    except serial.SerialException as exc:
+        print(f"Could not open serial port {args.port}: {exc}")
+        print_available_ports()
+        print("Check the board USB cable, driver, Device Manager COM number, and whether another program is using the port.")
+        return 1
+
+    with ser:
         try:
             ser.dtr = False
             ser.rts = False
