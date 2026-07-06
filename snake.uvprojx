@@ -399,6 +399,16 @@
               <FileType>1</FileType>
               <FilePath>.\Application\flash_store.c</FilePath>
             </File>
+            <File>
+              <FileName>chinese_fonts.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Application\chinese_fonts.c</FilePath>
+            </File>
+            <File>
+              <FileName>title_bitmap.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\Application\title_bitmap.c</FilePath>
+            </File>
           </Files>
         </Group>
         <Group>

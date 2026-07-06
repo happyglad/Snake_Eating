@@ -1,6 +1,7 @@
 #include "bsp_lcd_game.h"
 #include "stm32f103_min.h"
 #include "chinese_fonts.h"
+#include "title_bitmap.h"
 #include <string.h>
 
 #define ILI9341_CMD_ADDR   (*(__IO uint16_t *)0x60000000UL)
@@ -716,14 +717,14 @@ void lcd_show_start_ex(uint32_t high_score, const char *mode)
     lcd_clear(COLOR_BLACK);
     
     /* Top decorative header bar */
-    lcd_fill_rect(0, 0, g_lcd_width, 46, COLOR_DARK);
-    lcd_fill_rect(0, 44, g_lcd_width, 2, COLOR_GREEN);
+    lcd_fill_rect(0, 0, g_lcd_width, 60, COLOR_DARK);
+    lcd_fill_rect(0, 58, g_lcd_width, 2, COLOR_GREEN);
     
     /* Chinese Title: "贪吃蛇大冒险" in custom 32x32 snake-themed pixel art */
-    lcd_draw_snake_title_32(24, 7, COLOR_GREEN, COLOR_DARK);
+    lcd_draw_snake_title_32(10, 3, COLOR_GREEN, COLOR_DARK);
     
     /* Mode selection title */
-    lcd_draw_chinese_text(36, 62, "请选择游戏模式:", COLOR_WHITE, COLOR_BLACK);
+    lcd_draw_chinese_text(36, 68, "请选择游戏模式:", COLOR_WHITE, COLOR_BLACK);
     
     /* Determine y coordinate for highlighting current mode */
     if (strcmp(mode, "BLOCK") == 0) {
@@ -757,11 +758,11 @@ void lcd_show_start_revamp(uint8_t focus, uint32_t high_score)
     lcd_clear(COLOR_BLACK);
     
     /* Top decorative header bar */
-    lcd_fill_rect(0, 0, g_lcd_width, 46, COLOR_DARK);
-    lcd_fill_rect(0, 44, g_lcd_width, 2, COLOR_GREEN);
+    lcd_fill_rect(0, 0, g_lcd_width, 60, COLOR_DARK);
+    lcd_fill_rect(0, 58, g_lcd_width, 2, COLOR_GREEN);
     
     /* Chinese Title: "贪吃蛇大冒险" in custom 32x32 snake-themed pixel art */
-    lcd_draw_snake_title_32(24, 7, COLOR_GREEN, COLOR_DARK);
+    lcd_draw_snake_title_32(10, 3, COLOR_GREEN, COLOR_DARK);
     
     /* Option 1: 开始游戏 */
     lcd_fill_rect(32, 85, 176, 36, (focus == 0U) ? COLOR_DARK : COLOR_BLACK);
@@ -1112,32 +1113,40 @@ static void lcd_draw_char_16x32(uint16_t x, uint16_t y, const uint8_t *matrix, u
 
 void lcd_draw_snake_title_32(uint16_t x, uint16_t y, uint16_t color, uint16_t bg)
 {
-    extern const uint8_t g_snake_head[64];
-    extern const uint8_t g_snake_tail[64];
-    extern const uint8_t g_snake_glyph_tan[128];
-    extern const uint8_t g_snake_glyph_chi[128];
-    extern const uint8_t g_snake_glyph_she[128];
-    extern const uint8_t g_snake_glyph_da[128];
-    extern const uint8_t g_snake_glyph_mao[128];
-    extern const uint8_t g_snake_glyph_xian[128];
+    uint16_t row;
+    uint16_t col;
+    const uint16_t layer_colors[TITLE_BITMAP_LAYERS] = {
+        COLOR_WHITE,
+        COLOR_RED,
+        COLOR_GREEN,
+        COLOR_BLUE,
+    };
 
-    (void)color; /* Suppress unused parameter warning */
+    (void)color;
+    lcd_fill_rect(x, y, TITLE_BITMAP_WIDTH, TITLE_BITMAP_HEIGHT, bg);
 
-    /* Draw snake head at left (green fill with blue outline) */
-    lcd_draw_char_16x32(4, y, g_snake_head, COLOR_GREEN, COLOR_BLUE, bg);
+    lcd_set_window(x, y,
+                   (uint16_t)(x + TITLE_BITMAP_WIDTH - 1U),
+                   (uint16_t)(y + TITLE_BITMAP_HEIGHT - 1U));
+    for (row = 0U; row < TITLE_BITMAP_HEIGHT; row++) {
+        for (col = 0U; col < TITLE_BITMAP_WIDTH; col++) {
+            uint16_t pixel = bg;
+            uint16_t byte_index = (uint16_t)(row * TITLE_BITMAP_BYTES_PER_ROW + (col >> 3));
+            uint8_t bit_mask = (uint8_t)(0x80U >> (col & 7U));
+            uint8_t layer;
 
-    /* Draw "贪吃蛇" (cyan fill with blue outline) */
-    lcd_draw_char_32x32(x,         y, g_snake_glyph_tan,  COLOR_CYAN, COLOR_BLUE, bg);
-    lcd_draw_char_32x32(x + 32U,   y, g_snake_glyph_chi,  COLOR_CYAN, COLOR_BLUE, bg);
-    lcd_draw_char_32x32(x + 64U,   y, g_snake_glyph_she,  COLOR_CYAN, COLOR_BLUE, bg);
-
-    /* Draw "大冒险" (yellow fill with blue outline) */
-    lcd_draw_char_32x32(x + 96U,   y, g_snake_glyph_da,   COLOR_YELLOW, COLOR_BLUE, bg);
-    lcd_draw_char_32x32(x + 128U,  y, g_snake_glyph_mao,  COLOR_YELLOW, COLOR_BLUE, bg);
-    lcd_draw_char_32x32(x + 160U,  y, g_snake_glyph_xian, COLOR_YELLOW, COLOR_BLUE, bg);
-
-    /* Draw snake tail at right (green fill with blue outline) */
-    lcd_draw_char_16x32(218, y, g_snake_tail, COLOR_GREEN, COLOR_BLUE, bg);
+            for (layer = 1U; layer < TITLE_BITMAP_LAYERS; layer++) {
+                if ((g_title_bitmap[layer][byte_index] & bit_mask) != 0U) {
+                    pixel = layer_colors[layer];
+                    break;
+                }
+            }
+            if ((g_title_bitmap[0][byte_index] & bit_mask) != 0U) {
+                pixel = layer_colors[0];
+            }
+            lcd_write_data(pixel);
+        }
+    }
 }
 
 void lcd_draw_item(uint8_t x, uint8_t y, uint8_t type)
@@ -1171,4 +1180,3 @@ void lcd_draw_item(uint8_t x, uint8_t y, uint8_t type)
             break;
     }
 }
-

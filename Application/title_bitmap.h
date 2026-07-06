@@ -1,0 +1,13 @@
+#ifndef TITLE_BITMAP_H
+#define TITLE_BITMAP_H
+
+#include <stdint.h>
+
+#define TITLE_BITMAP_WIDTH 220U
+#define TITLE_BITMAP_HEIGHT 52U
+#define TITLE_BITMAP_BYTES_PER_ROW 28U
+#define TITLE_BITMAP_LAYERS 4U
+
+extern const uint8_t g_title_bitmap[TITLE_BITMAP_LAYERS][TITLE_BITMAP_HEIGHT * TITLE_BITMAP_BYTES_PER_ROW];
+
+#endif
