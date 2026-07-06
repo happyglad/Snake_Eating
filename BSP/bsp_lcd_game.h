@@ -42,8 +42,18 @@ void lcd_draw_board(uint32_t score, uint32_t high_score);
 void lcd_draw_board_ex(uint32_t score, uint32_t high_score, const char *mode);
 void lcd_update_score(uint32_t score, uint32_t high_score);
 void lcd_update_status(uint32_t score, uint32_t high_score, uint32_t duration);
+void lcd_draw_chinese_char_16(uint16_t x, uint16_t y, const uint8_t *matrix, uint16_t color, uint16_t bg);
+void lcd_draw_chinese_char_32(uint16_t x, uint16_t y, const uint8_t *matrix, uint16_t color, uint16_t bg);
+void lcd_draw_chinese_text(uint16_t x, uint16_t y, const char *text, uint16_t color, uint16_t bg);
+void lcd_draw_chinese_text_32(uint16_t x, uint16_t y, const char *text, uint16_t color, uint16_t bg);
+void lcd_draw_snake_title_32(uint16_t x, uint16_t y, uint16_t color, uint16_t bg);
+void lcd_draw_item(uint8_t x, uint8_t y, uint8_t type);
+void lcd_update_status_ex(uint32_t score, uint32_t high_score, uint32_t duration, const char *item_text, uint32_t item_sec);
+
 void lcd_show_start(uint32_t high_score);
 void lcd_show_start_ex(uint32_t high_score, const char *mode);
+void lcd_show_start_revamp(uint8_t focus, uint32_t high_score);
+void lcd_show_settings(uint8_t focus, const char *mode, uint8_t items_enabled);
 void lcd_show_game_over(uint32_t score, uint32_t high_score);
 void lcd_show_game_over_ex(uint32_t score, uint32_t high_score, uint32_t duration, const char *reason);
 

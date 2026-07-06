@@ -1,5 +1,7 @@
 #include "bsp_lcd_game.h"
 #include "stm32f103_min.h"
+#include "chinese_fonts.h"
+#include <string.h>
 
 #define ILI9341_CMD_ADDR   (*(__IO uint16_t *)0x60000000UL)
 #define ILI9341_DATA_ADDR  (*(__IO uint16_t *)0x60020000UL)
@@ -611,19 +613,19 @@ void lcd_draw_obstacle(uint8_t x, uint8_t y)
     lcd_fill_rect((uint16_t)(px + 2U), (uint16_t)(py + 5U), CELL_SIZE - 6U, 2U, COLOR_DARK);
 }
 
-static void lcd_draw_button(uint16_t x, uint16_t y, uint16_t w, uint16_t h, const char *label, uint16_t color)
-{
-    lcd_fill_rect(x, y, w, h, COLOR_GRAY);
-    lcd_fill_rect((uint16_t)(x + 2U), (uint16_t)(y + 2U), (uint16_t)(w - 4U), (uint16_t)(h - 4U), COLOR_DARK);
-    lcd_draw_text((uint16_t)(x + 10U), (uint16_t)(y + 15U), label, color, COLOR_DARK);
-}
-
 void lcd_draw_touch_controls(void)
 {
     lcd_fill_rect(0, 224, g_lcd_width, 96, COLOR_BLACK);
-    lcd_draw_button(0, 272, 80, 48, "MODE", COLOR_ORANGE);
-    lcd_fill_rect(80, 272, 80, 48, COLOR_BLACK);
-    lcd_draw_button(160, 272, 80, 48, "START", COLOR_YELLOW);
+    
+    /* MODE button */
+    lcd_fill_rect(0, 272, 80, 48, COLOR_GRAY);
+    lcd_fill_rect(2, 274, 76, 44, COLOR_DARK);
+    lcd_draw_chinese_text(24, 288, "切换", COLOR_ORANGE, COLOR_DARK);
+    
+    /* START button */
+    lcd_fill_rect(160, 272, 80, 48, COLOR_GRAY);
+    lcd_fill_rect(162, 274, 76, 44, COLOR_DARK);
+    lcd_draw_chinese_text(184, 288, "开始", COLOR_YELLOW, COLOR_DARK);
 }
 
 void lcd_draw_swipe_controls(void)
@@ -640,6 +642,8 @@ void lcd_draw_board(uint32_t score, uint32_t high_score)
 
 void lcd_draw_board_ex(uint32_t score, uint32_t high_score, const char *mode)
 {
+    const char *zh_mode = "普通";
+    
     lcd_fill_rect(0, 0, g_lcd_width, 40, COLOR_BLACK);
     lcd_fill_rect(0, 0, g_lcd_width, 34, COLOR_DARK);
     lcd_draw_text(4, 4, "S:", COLOR_WHITE, COLOR_DARK);
@@ -647,9 +651,19 @@ void lcd_draw_board_ex(uint32_t score, uint32_t high_score, const char *mode)
     lcd_draw_text(84, 4, "H:", COLOR_WHITE, COLOR_DARK);
     lcd_draw_number(108, 4, high_score, COLOR_CYAN, COLOR_DARK);
     lcd_draw_text(4, 22, "M:", COLOR_WHITE, COLOR_DARK);
-    lcd_draw_text(28, 22, mode, COLOR_ORANGE, COLOR_DARK);
+    
+    if (strcmp(mode, "BLOCK") == 0) {
+        zh_mode = "障碍";
+    } else if (strcmp(mode, "TIME") == 0) {
+        zh_mode = "限时";
+    }
+    lcd_draw_chinese_text(28, 19, zh_mode, COLOR_ORANGE, COLOR_DARK);
+    
     lcd_draw_text(144, 22, "T:", COLOR_WHITE, COLOR_DARK);
     lcd_draw_number(168, 22, 0U, COLOR_GREEN, COLOR_DARK);
+    
+    /* Clear active item status slot */
+    lcd_fill_rect(164, 4, 76, 16, COLOR_DARK);
 
     lcd_fill_rect(BOARD_X, BOARD_Y,
                   GRID_COLS * CELL_SIZE,
@@ -669,12 +683,25 @@ void lcd_update_score(uint32_t score, uint32_t high_score)
 
 void lcd_update_status(uint32_t score, uint32_t high_score, uint32_t duration)
 {
+    lcd_update_status_ex(score, high_score, duration, "", 0U);
+}
+
+void lcd_update_status_ex(uint32_t score, uint32_t high_score, uint32_t duration, const char *item_text, uint32_t item_sec)
+{
     lcd_fill_rect(28, 4, 54, 14, COLOR_DARK);
     lcd_draw_number(28, 4, score, COLOR_YELLOW, COLOR_DARK);
     lcd_fill_rect(108, 4, 54, 14, COLOR_DARK);
     lcd_draw_number(108, 4, high_score, COLOR_CYAN, COLOR_DARK);
     lcd_fill_rect(168, 22, 48, 14, COLOR_DARK);
     lcd_draw_number(168, 22, duration, COLOR_GREEN, COLOR_DARK);
+    
+    /* Draw item status text at x=164, y=4 */
+    lcd_fill_rect(164, 4, 76, 16, COLOR_DARK);
+    if (item_text && item_text[0] != '\0') {
+        lcd_draw_chinese_text(164, 4, item_text, COLOR_LIME, COLOR_DARK);
+        lcd_draw_text(196, 5, ":", COLOR_LIME, COLOR_DARK);
+        lcd_draw_number(208, 5, item_sec, COLOR_LIME, COLOR_DARK);
+    }
 }
 
 void lcd_show_start(uint32_t high_score)
@@ -684,16 +711,161 @@ void lcd_show_start(uint32_t high_score)
 
 void lcd_show_start_ex(uint32_t high_score, const char *mode)
 {
+    uint16_t mode_y = 88U;
+    
     lcd_clear(COLOR_BLACK);
+    
+    /* Top decorative header bar */
     lcd_fill_rect(0, 0, g_lcd_width, 46, COLOR_DARK);
-    lcd_draw_text(84, 16, "SNAKE", COLOR_GREEN, COLOR_DARK);
-    lcd_draw_text(36, 70, "SERIAL TOUCH", COLOR_CYAN, COLOR_BLACK);
-    lcd_draw_text(36, 102, "ENTER START", COLOR_WHITE, COLOR_BLACK);
-    lcd_draw_text(36, 134, "M:", COLOR_WHITE, COLOR_BLACK);
-    lcd_draw_text(72, 134, mode, COLOR_YELLOW, COLOR_BLACK);
-    lcd_draw_text(36, 166, "HIGH:", COLOR_CYAN, COLOR_BLACK);
-    lcd_draw_number(100, 166, high_score, COLOR_YELLOW, COLOR_BLACK);
+    lcd_fill_rect(0, 44, g_lcd_width, 2, COLOR_GREEN);
+    
+    /* Chinese Title: "贪吃蛇大冒险" in custom 32x32 snake-themed pixel art */
+    lcd_draw_snake_title_32(24, 7, COLOR_GREEN, COLOR_DARK);
+    
+    /* Mode selection title */
+    lcd_draw_chinese_text(36, 62, "请选择游戏模式:", COLOR_WHITE, COLOR_BLACK);
+    
+    /* Determine y coordinate for highlighting current mode */
+    if (strcmp(mode, "BLOCK") == 0) {
+        mode_y = 113U;
+    } else if (strcmp(mode, "TIME") == 0) {
+        mode_y = 138U;
+    } else {
+        mode_y = 88U;
+    }
+    
+    /* Draw highlight box for active mode selection */
+    lcd_fill_rect(24, mode_y - 2, 192, 20, COLOR_DARK);
+    
+    /* Render mode strings */
+    lcd_draw_chinese_text(36, 90, "普通模式", (mode_y == 88U) ? COLOR_YELLOW : COLOR_GRAY, (mode_y == 88U) ? COLOR_DARK : COLOR_BLACK);
+    lcd_draw_chinese_text(36, 115, "障碍模式", (mode_y == 113U) ? COLOR_YELLOW : COLOR_GRAY, (mode_y == 113U) ? COLOR_DARK : COLOR_BLACK);
+    lcd_draw_chinese_text(36, 140, "限时挑战", (mode_y == 138U) ? COLOR_YELLOW : COLOR_GRAY, (mode_y == 138U) ? COLOR_DARK : COLOR_BLACK);
+    
+    /* Render high score stats */
+    lcd_draw_chinese_text(36, 168, "最高记录:", COLOR_CYAN, COLOR_BLACK);
+    lcd_draw_number(116, 168, high_score, COLOR_YELLOW, COLOR_BLACK);
+    
+    /* Render control tip */
+    lcd_draw_chinese_text(36, 196, "按按键开始游戏", COLOR_WHITE, COLOR_BLACK);
+    
     lcd_draw_touch_controls();
+}
+
+void lcd_show_start_revamp(uint8_t focus, uint32_t high_score)
+{
+    lcd_clear(COLOR_BLACK);
+    
+    /* Top decorative header bar */
+    lcd_fill_rect(0, 0, g_lcd_width, 46, COLOR_DARK);
+    lcd_fill_rect(0, 44, g_lcd_width, 2, COLOR_GREEN);
+    
+    /* Chinese Title: "贪吃蛇大冒险" in custom 32x32 snake-themed pixel art */
+    lcd_draw_snake_title_32(24, 7, COLOR_GREEN, COLOR_DARK);
+    
+    /* Option 1: 开始游戏 */
+    lcd_fill_rect(32, 85, 176, 36, (focus == 0U) ? COLOR_DARK : COLOR_BLACK);
+    if (focus == 0U) {
+        /* Draw blue frame for focus */
+        lcd_fill_rect(32, 85, 176, 2, COLOR_CYAN);
+        lcd_fill_rect(32, 119, 176, 2, COLOR_CYAN);
+        lcd_fill_rect(32, 85, 2, 36, COLOR_CYAN);
+        lcd_fill_rect(206, 85, 2, 36, COLOR_CYAN);
+    }
+    lcd_draw_chinese_text(72, 95, "开始游戏", (focus == 0U) ? COLOR_YELLOW : COLOR_GRAY, (focus == 0U) ? COLOR_DARK : COLOR_BLACK);
+    
+    /* Option 2: 游戏设置 */
+    lcd_fill_rect(32, 135, 176, 36, (focus == 1U) ? COLOR_DARK : COLOR_BLACK);
+    if (focus == 1U) {
+        /* Draw blue frame for focus */
+        lcd_fill_rect(32, 135, 176, 2, COLOR_CYAN);
+        lcd_fill_rect(32, 169, 176, 2, COLOR_CYAN);
+        lcd_fill_rect(32, 135, 2, 36, COLOR_CYAN);
+        lcd_fill_rect(206, 135, 2, 36, COLOR_CYAN);
+    }
+    lcd_draw_chinese_text(72, 145, "游戏设置", (focus == 1U) ? COLOR_YELLOW : COLOR_GRAY, (focus == 1U) ? COLOR_DARK : COLOR_BLACK);
+    
+    /* Render high score stats */
+    lcd_draw_chinese_text(36, 185, "最高记录:", COLOR_CYAN, COLOR_BLACK);
+    lcd_draw_number(116, 185, high_score, COLOR_YELLOW, COLOR_BLACK);
+    
+    /* Draw revamped touch controls at bottom */
+    lcd_fill_rect(0, 224, g_lcd_width, 96, COLOR_BLACK);
+    
+    /* Left button: "切换" */
+    lcd_fill_rect(0, 272, 80, 48, COLOR_GRAY);
+    lcd_fill_rect(2, 274, 76, 44, COLOR_DARK);
+    lcd_draw_chinese_text(8, 288, "切换", COLOR_WHITE, COLOR_DARK);
+    
+    /* Right button: "确定" */
+    lcd_fill_rect(160, 272, 80, 48, COLOR_GRAY);
+    lcd_fill_rect(162, 274, 76, 44, COLOR_DARK);
+    lcd_draw_chinese_text(168, 288, "确定", COLOR_WHITE, COLOR_DARK);
+}
+
+void lcd_show_settings(uint8_t focus, const char *mode, uint8_t items_enabled)
+{
+    lcd_clear(COLOR_BLACK);
+    
+    /* Top decorative header bar */
+    lcd_fill_rect(0, 0, g_lcd_width, 46, COLOR_DARK);
+    lcd_fill_rect(0, 44, g_lcd_width, 2, COLOR_GREEN);
+    
+    /* Title: "游戏设置" (32x32 size) */
+    lcd_draw_chinese_text_32(56, 7, "游戏设置", COLOR_GREEN, COLOR_DARK);
+    
+    /* Row 0: 模式选择 */
+    lcd_fill_rect(16, 68, 208, 36, (focus == 0U) ? COLOR_DARK : COLOR_BLACK);
+    if (focus == 0U) {
+        lcd_fill_rect(16, 68, 208, 2, COLOR_CYAN);
+        lcd_fill_rect(16, 102, 208, 2, COLOR_CYAN);
+        lcd_fill_rect(16, 68, 2, 36, COLOR_CYAN);
+        lcd_fill_rect(222, 68, 2, 36, COLOR_CYAN);
+    }
+    lcd_draw_chinese_text(24, 78, "模式选择:", COLOR_WHITE, (focus == 0U) ? COLOR_DARK : COLOR_BLACK);
+    
+    /* Get mode Chinese name */
+    const char *zh_mode = "普通";
+    if (strcmp(mode, "BLOCKS") == 0 || strcmp(mode, "BLOCK") == 0) {
+        zh_mode = "障碍";
+    } else if (strcmp(mode, "TIME_LIMIT") == 0 || strcmp(mode, "TIME") == 0) {
+        zh_mode = "限时";
+    }
+    lcd_draw_chinese_text(112, 78, zh_mode, COLOR_YELLOW, (focus == 0U) ? COLOR_DARK : COLOR_BLACK);
+    
+    /* Row 1: 道具开启 */
+    lcd_fill_rect(16, 114, 208, 36, (focus == 1U) ? COLOR_DARK : COLOR_BLACK);
+    if (focus == 1U) {
+        lcd_fill_rect(16, 114, 208, 2, COLOR_CYAN);
+        lcd_fill_rect(16, 148, 208, 2, COLOR_CYAN);
+        lcd_fill_rect(16, 114, 2, 36, COLOR_CYAN);
+        lcd_fill_rect(222, 114, 2, 36, COLOR_CYAN);
+    }
+    lcd_draw_chinese_text(24, 124, "道具开启:", COLOR_WHITE, (focus == 1U) ? COLOR_DARK : COLOR_BLACK);
+    lcd_draw_chinese_text(112, 124, items_enabled ? "开启" : "关闭", items_enabled ? COLOR_GREEN : COLOR_RED, (focus == 1U) ? COLOR_DARK : COLOR_BLACK);
+    
+    /* Row 2: 返回主菜单 */
+    lcd_fill_rect(16, 160, 208, 36, (focus == 2U) ? COLOR_DARK : COLOR_BLACK);
+    if (focus == 2U) {
+        lcd_fill_rect(16, 160, 208, 2, COLOR_CYAN);
+        lcd_fill_rect(16, 194, 208, 2, COLOR_CYAN);
+        lcd_fill_rect(16, 160, 2, 36, COLOR_CYAN);
+        lcd_fill_rect(222, 160, 2, 36, COLOR_CYAN);
+    }
+    lcd_draw_chinese_text(72, 170, "返回主菜单", (focus == 2U) ? COLOR_YELLOW : COLOR_GRAY, (focus == 2U) ? COLOR_DARK : COLOR_BLACK);
+    
+    /* Touch controls at bottom */
+    lcd_fill_rect(0, 224, g_lcd_width, 96, COLOR_BLACK);
+    
+    /* Left button: "切换" */
+    lcd_fill_rect(0, 272, 80, 48, COLOR_GRAY);
+    lcd_fill_rect(2, 274, 76, 44, COLOR_DARK);
+    lcd_draw_chinese_text(8, 288, "切换", COLOR_WHITE, COLOR_DARK);
+    
+    /* Right button: "修改" / "返回" */
+    lcd_fill_rect(160, 272, 80, 48, COLOR_GRAY);
+    lcd_fill_rect(162, 274, 76, 44, COLOR_DARK);
+    lcd_draw_chinese_text(168, 288, (focus == 2U) ? "返回" : "修改", COLOR_WHITE, COLOR_DARK);
 }
 
 void lcd_show_game_over(uint32_t score, uint32_t high_score)
@@ -703,16 +875,235 @@ void lcd_show_game_over(uint32_t score, uint32_t high_score)
 
 void lcd_show_game_over_ex(uint32_t score, uint32_t high_score, uint32_t duration, const char *reason)
 {
+    const char *zh_reason = "结束";
+    
     lcd_fill_rect(16, 82, 208, 142, COLOR_BLACK);
     lcd_fill_rect(20, 86, 200, 134, COLOR_DARK);
-    lcd_draw_text(62, 98, "GAME OVER", COLOR_RED, COLOR_DARK);
-    lcd_draw_text(38, 126, "WHY:", COLOR_WHITE, COLOR_DARK);
-    lcd_draw_text(90, 126, reason, COLOR_ORANGE, COLOR_DARK);
-    lcd_draw_text(38, 150, "SCORE:", COLOR_WHITE, COLOR_DARK);
-    lcd_draw_number(114, 150, score, COLOR_YELLOW, COLOR_DARK);
-    lcd_draw_text(38, 174, "HIGH:", COLOR_CYAN, COLOR_DARK);
-    lcd_draw_number(102, 174, high_score, COLOR_YELLOW, COLOR_DARK);
-    lcd_draw_text(38, 198, "TIME:", COLOR_GREEN, COLOR_DARK);
-    lcd_draw_number(102, 198, duration, COLOR_YELLOW, COLOR_DARK);
+    
+    lcd_draw_chinese_text(88, 98, "游戏结束", COLOR_RED, COLOR_DARK);
+    lcd_draw_chinese_text(38, 126, "原因:", COLOR_WHITE, COLOR_DARK);
+    
+    if (strcmp(reason, "WALL") == 0) {
+        zh_reason = "撞墙死亡";
+    } else if (strcmp(reason, "BODY") == 0) {
+        zh_reason = "撞到身体";
+    } else if (strcmp(reason, "BLOCK") == 0) {
+        zh_reason = "撞到障碍";
+    } else if (strcmp(reason, "TIMEOUT") == 0) {
+        zh_reason = "时间结束";
+    }
+    
+    lcd_draw_chinese_text(86, 126, zh_reason, COLOR_ORANGE, COLOR_DARK);
+    
+    lcd_draw_chinese_text(38, 150, "得分:", COLOR_WHITE, COLOR_DARK);
+    lcd_draw_number(86, 150, score, COLOR_YELLOW, COLOR_DARK);
+    
+    lcd_draw_chinese_text(38, 174, "最高:", COLOR_CYAN, COLOR_DARK);
+    lcd_draw_number(86, 174, high_score, COLOR_YELLOW, COLOR_DARK);
+    
+    lcd_draw_chinese_text(38, 198, "时间:", COLOR_GREEN, COLOR_DARK);
+    lcd_draw_number(86, 198, duration, COLOR_YELLOW, COLOR_DARK);
+    lcd_draw_chinese_text(134, 198, "秒", COLOR_GREEN, COLOR_DARK);
+    
     lcd_draw_touch_controls();
 }
+
+/* Chinese character rendering support */
+
+void lcd_draw_chinese_char_16(uint16_t x, uint16_t y, const uint8_t *matrix, uint16_t color, uint16_t bg)
+{
+    uint16_t i, j;
+    lcd_set_window(x, y, x + 15U, y + 15U);
+    for (i = 0; i < 16U; i++) {
+        uint16_t row = (uint16_t)(((uint16_t)matrix[2U * i] << 8) | matrix[2U * i + 1U]);
+        for (j = 0; j < 16U; j++) {
+            if (row & (0x8000U >> j)) {
+                lcd_write_data(color);
+            } else {
+                lcd_write_data(bg);
+            }
+        }
+    }
+}
+
+void lcd_draw_chinese_char_32(uint16_t x, uint16_t y, const uint8_t *matrix, uint16_t color, uint16_t bg)
+{
+    uint16_t i, j, r_scale;
+    lcd_set_window(x, y, x + 31U, y + 31U);
+    for (i = 0; i < 16U; i++) {
+        uint16_t row = (uint16_t)(((uint16_t)matrix[2U * i] << 8) | matrix[2U * i + 1U]);
+        for (r_scale = 0; r_scale < 2U; r_scale++) {
+            for (j = 0; j < 16U; j++) {
+                uint16_t pixel = (row & (0x8000U >> j)) ? color : bg;
+                lcd_write_data(pixel);
+                lcd_write_data(pixel);
+            }
+        }
+    }
+}
+
+static const uint8_t *find_chinese_glyph(const uint8_t *code, uint8_t *bytes_consumed)
+{
+    uint16_t i;
+    if (code[0] >= 0xE0U && code[0] <= 0xEFU) {
+        *bytes_consumed = 3U;
+        for (i = 0; i < g_chinese_glyphs_count; i++) {
+            if (g_chinese_glyphs[i].utf8[0] == code[0] &&
+                g_chinese_glyphs[i].utf8[1] == code[1] &&
+                g_chinese_glyphs[i].utf8[2] == code[2]) {
+                return g_chinese_glyphs[i].matrix;
+            }
+        }
+        return 0;
+    }
+    else if (code[0] >= 0x81U) {
+        *bytes_consumed = 2U;
+        for (i = 0; i < g_chinese_glyphs_count; i++) {
+            if (g_chinese_glyphs[i].gbk[0] == code[0] &&
+                g_chinese_glyphs[i].gbk[1] == code[1]) {
+                return g_chinese_glyphs[i].matrix;
+            }
+        }
+        return 0;
+    }
+    *bytes_consumed = 1U;
+    return 0;
+}
+
+void lcd_draw_chinese_text(uint16_t x, uint16_t y, const char *text, uint16_t color, uint16_t bg)
+{
+    const uint8_t *ptr = (const uint8_t *)text;
+    while (*ptr) {
+        if (*ptr < 128U) {
+            lcd_draw_char(x, y + 1U, (char)*ptr, color, bg);
+            x += 12U;
+            ptr++;
+        } else {
+            uint8_t consumed = 0;
+            const uint8_t *matrix = find_chinese_glyph(ptr, &consumed);
+            if (matrix) {
+                lcd_draw_chinese_char_16(x, y, matrix, color, bg);
+            } else {
+                lcd_fill_rect(x, y, 16U, 16U, bg);
+                lcd_fill_rect(x + 1U, y + 1U, 14U, 14U, color);
+                lcd_fill_rect(x + 3U, y + 3U, 10U, 10U, bg);
+            }
+            x += 16U;
+            ptr += consumed;
+        }
+    }
+}
+
+void lcd_draw_chinese_text_32(uint16_t x, uint16_t y, const char *text, uint16_t color, uint16_t bg)
+{
+    const uint8_t *ptr = (const uint8_t *)text;
+    while (*ptr) {
+        if (*ptr < 128U) {
+            x += 16U;
+            ptr++;
+        } else {
+            uint8_t consumed = 0;
+            const uint8_t *matrix = find_chinese_glyph(ptr, &consumed);
+            if (matrix) {
+                lcd_draw_chinese_char_32(x, y, matrix, color, bg);
+            }
+            x += 32U;
+            ptr += consumed;
+        }
+    }
+}
+
+static void lcd_draw_char_32x32(uint16_t x, uint16_t y, const uint8_t *matrix, uint16_t color, uint16_t bg)
+{
+    uint16_t i, b, j;
+    lcd_set_window(x, y, x + 31U, y + 31U);
+    for (i = 0; i < 32U; i++) {
+        for (b = 0; b < 4U; b++) {
+            uint8_t byte_val = matrix[(i << 2) + b];
+            for (j = 0; j < 8U; j++) {
+                if (byte_val & (0x80U >> j)) {
+                    lcd_write_data(color);
+                } else {
+                    lcd_write_data(bg);
+                }
+            }
+        }
+    }
+}
+
+static void lcd_draw_char_16x32(uint16_t x, uint16_t y, const uint8_t *matrix, uint16_t color, uint16_t bg)
+{
+    uint16_t i, b, j;
+    lcd_set_window(x, y, x + 15U, y + 31U);
+    for (i = 0; i < 32U; i++) {
+        for (b = 0; b < 2U; b++) {
+            uint8_t byte_val = matrix[(i << 1) + b];
+            for (j = 0; j < 8U; j++) {
+                if (byte_val & (0x80U >> j)) {
+                    lcd_write_data(color);
+                } else {
+                    lcd_write_data(bg);
+                }
+            }
+        }
+    }
+}
+
+void lcd_draw_snake_title_32(uint16_t x, uint16_t y, uint16_t color, uint16_t bg)
+{
+    extern const uint8_t g_snake_head[64];
+    extern const uint8_t g_snake_tail[64];
+    extern const uint8_t g_snake_glyph_tan[128];
+    extern const uint8_t g_snake_glyph_chi[128];
+    extern const uint8_t g_snake_glyph_she[128];
+    extern const uint8_t g_snake_glyph_da[128];
+    extern const uint8_t g_snake_glyph_mao[128];
+    extern const uint8_t g_snake_glyph_xian[128];
+
+    /* Draw snake head at left */
+    lcd_draw_char_16x32(4, y, g_snake_head, COLOR_GREEN, bg);
+
+    /* Draw characters */
+    lcd_draw_char_32x32(x,         y, g_snake_glyph_tan,  color, bg);
+    lcd_draw_char_32x32(x + 32U,   y, g_snake_glyph_chi,  color, bg);
+    lcd_draw_char_32x32(x + 64U,   y, g_snake_glyph_she,  color, bg);
+    lcd_draw_char_32x32(x + 96U,   y, g_snake_glyph_da,   color, bg);
+    lcd_draw_char_32x32(x + 128U,  y, g_snake_glyph_mao,  color, bg);
+    lcd_draw_char_32x32(x + 160U,  y, g_snake_glyph_xian, color, bg);
+
+    /* Draw snake tail at right */
+    lcd_draw_char_16x32(218, y, g_snake_tail, COLOR_GREEN, bg);
+}
+
+void lcd_draw_item(uint8_t x, uint8_t y, uint8_t type)
+{
+    uint16_t px = (uint16_t)(BOARD_X + x * CELL_SIZE + 1U);
+    uint16_t py = (uint16_t)(BOARD_Y + y * CELL_SIZE + 1U);
+    lcd_fill_rect(px, py, CELL_SIZE - 2U, CELL_SIZE - 2U, COLOR_BLACK);
+    
+    switch (type) {
+        case 1U: /* ITEM_SPEED_UP - Yellow Lightning/Arrow */
+            lcd_fill_rect(px + 4U, py + 1U, 2U, 8U, COLOR_YELLOW);
+            lcd_fill_rect(px + 2U, py + 4U, 6U, 2U, COLOR_YELLOW);
+            break;
+        case 2U: /* ITEM_SLOW_DOWN - Blue snail shape */
+            lcd_fill_rect(px + 2U, py + 4U, 6U, 4U, COLOR_BLUE);
+            lcd_fill_rect(px + 6U, py + 2U, 2U, 2U, COLOR_CYAN);
+            break;
+        case 3U: /* ITEM_WALL_PASS - White shield / ring */
+            lcd_fill_rect(px + 2U, py + 2U, 6U, 6U, COLOR_WHITE);
+            lcd_fill_rect(px + 4U, py + 4U, 2U, 2U, COLOR_BLACK);
+            break;
+        case 4U: /* ITEM_DOUBLE_SCORE - Orange '2' */
+            lcd_fill_rect(px + 2U, py + 2U, 6U, 2U, COLOR_ORANGE);
+            lcd_fill_rect(px + 6U, py + 4U, 2U, 2U, COLOR_ORANGE);
+            lcd_fill_rect(px + 2U, py + 6U, 6U, 2U, COLOR_ORANGE);
+            break;
+        case 5U: /* ITEM_SHORTEN - Lime scissor/minus */
+            lcd_fill_rect(px + 2U, py + 4U, 6U, 2U, COLOR_LIME);
+            break;
+        default:
+            break;
+    }
+}
+

@@ -44,4 +44,9 @@ void snake_game_turn_right_or_start(void);
  */
 void snake_game_tick(void);
 
+/**
+ * @brief Return non-zero if items are enabled.
+ */
+uint8_t snake_game_items_enabled(void);
+
 #endif /* SNAKE_GAME_H */
