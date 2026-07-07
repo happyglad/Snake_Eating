@@ -34,6 +34,9 @@ void lcd_draw_number(uint16_t x, uint16_t y, uint32_t number, uint16_t color, ui
 void lcd_draw_cell(uint8_t x, uint8_t y, uint16_t color);
 void lcd_draw_snake_head(uint8_t x, uint8_t y, uint8_t dir);
 void lcd_draw_snake_body(uint8_t x, uint8_t y);
+void lcd_draw_snake_body_ex(uint8_t x, uint8_t y,
+                            uint8_t prev_x, uint8_t prev_y,
+                            uint8_t next_x, uint8_t next_y);
 void lcd_draw_food(uint8_t x, uint8_t y);
 void lcd_draw_obstacle(uint8_t x, uint8_t y);
 void lcd_draw_touch_controls(void);

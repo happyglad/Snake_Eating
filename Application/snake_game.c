@@ -414,6 +414,26 @@ static void draw_obstacles(void)
     }
 }
 
+static void draw_snake_segment(uint16_t index)
+{
+    Point prev;
+    Point next;
+
+    if (index == 0U || index >= g_snake_len) {
+        return;
+    }
+
+    prev = g_snake[index - 1U];
+    if ((index + 1U) < g_snake_len) {
+        next = g_snake[index + 1U];
+    } else {
+        next = g_snake[index];
+    }
+
+    lcd_draw_snake_body_ex(g_snake[index].x, g_snake[index].y,
+                           prev.x, prev.y, next.x, next.y);
+}
+
 /* Start a new game round */
 static void start_new_game(void)
 {
@@ -467,10 +487,10 @@ static void start_new_game(void)
     draw_obstacles();
     lcd_draw_swipe_controls();
 
-    /* Draw snake: head has direction marker, body uses a softer fill */
+    /* Draw snake: body segments use their neighbors to appear connected. */
     lcd_draw_snake_head(g_snake[0].x, g_snake[0].y, (uint8_t)g_current_dir);
     for (i = 1; i < g_snake_len; i++) {
-        lcd_draw_snake_body(g_snake[i].x, g_snake[i].y);
+        draw_snake_segment(i);
     }
     
     spawn_food();
@@ -616,14 +636,17 @@ static void move_snake(void)
     g_snake[0] = new_head;
     
     if (ate_food) {
-        /* Redraw: color new head green and turn old head into cyan body */
+        /* Redraw the new head and the bend just behind it. */
         lcd_draw_snake_head(g_snake[0].x, g_snake[0].y, (uint8_t)g_current_dir);
-        lcd_draw_snake_body(g_snake[1].x, g_snake[1].y);
+        draw_snake_segment(1U);
         spawn_food();
     } else {
-        /* Normal step: clear old tail cell, draw new head, and turn old head into body */
+        /* Normal step: clear old tail, then update the head, neck, and new tail. */
         lcd_draw_cell(old_tail.x, old_tail.y, COLOR_BLACK);
-        lcd_draw_snake_body(g_snake[1].x, g_snake[1].y);
+        draw_snake_segment(1U);
+        if (g_snake_len > 2U) {
+            draw_snake_segment((uint16_t)(g_snake_len - 1U));
+        }
         lcd_draw_snake_head(g_snake[0].x, g_snake[0].y, (uint8_t)g_current_dir);
     }
 }

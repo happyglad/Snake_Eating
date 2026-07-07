@@ -16,6 +16,11 @@
 #define COLOR_BOARD_BG     0x0021U
 #define COLOR_BOARD_ALT    0x0842U
 #define COLOR_BOARD_GRID   0x18E3U
+#define COLOR_SNAKE_DARK   0x0200U
+#define COLOR_SNAKE_MID    0x0480U
+#define COLOR_SNAKE_LIGHT  0x4EE8U
+#define COLOR_SNAKE_SCALE  0x0320U
+#define COLOR_SNAKE_BELLY  0x8F2AU
 
 static uint16_t g_lcd_id = LCDID_UNKNOWN;
 static uint8_t g_scan_mode = 0U;
@@ -32,6 +37,11 @@ static void lcd_draw_trophy_icon(uint16_t x, uint16_t y);
 static void lcd_draw_softkey(uint16_t x, uint16_t y, uint16_t w);
 static void lcd_draw_board_cell_bg(uint8_t x, uint8_t y);
 static void lcd_draw_board_background(void);
+static uint8_t lcd_is_neighbor(uint8_t x, uint8_t y, uint8_t nx, uint8_t ny);
+static void lcd_draw_snake_round_body(uint16_t px, uint16_t py,
+                                      uint8_t open_up, uint8_t open_down,
+                                      uint8_t open_left, uint8_t open_right,
+                                      uint8_t seed);
 
 static void gpio_set_cfg(GPIO_TypeDef *port, uint32_t pin, uint32_t cfg)
 {
@@ -619,35 +629,150 @@ void lcd_draw_snake_head(uint8_t x, uint8_t y, uint8_t dir)
 {
     uint16_t px = (uint16_t)(BOARD_X + x * CELL_SIZE + 1U);
     uint16_t py = (uint16_t)(BOARD_Y + y * CELL_SIZE + 1U);
-    uint16_t eye1_x = (uint16_t)(px + 3U);
-    uint16_t eye1_y = (uint16_t)(py + 3U);
-    uint16_t eye2_x = (uint16_t)(px + 7U);
-    uint16_t eye2_y = (uint16_t)(py + 3U);
+    uint16_t eye1_x;
+    uint16_t eye1_y;
+    uint16_t eye2_x;
+    uint16_t eye2_y;
+    uint16_t nose_x;
+    uint16_t nose_y;
 
-    lcd_fill_rect(px, py, CELL_SIZE - 2U, CELL_SIZE - 2U, COLOR_GREEN);
-    if (dir == 0U) {
-        eye1_x = (uint16_t)(px + 3U); eye1_y = (uint16_t)(py + 2U);
-        eye2_x = (uint16_t)(px + 7U); eye2_y = (uint16_t)(py + 2U);
-    } else if (dir == 1U) {
-        eye1_x = (uint16_t)(px + 3U); eye1_y = (uint16_t)(py + 7U);
-        eye2_x = (uint16_t)(px + 7U); eye2_y = (uint16_t)(py + 7U);
-    } else if (dir == 2U) {
-        eye1_x = (uint16_t)(px + 2U); eye1_y = (uint16_t)(py + 3U);
-        eye2_x = (uint16_t)(px + 2U); eye2_y = (uint16_t)(py + 7U);
+    lcd_draw_board_cell_bg(x, y);
+
+    if (dir == 2U || dir == 3U) {
+        lcd_fill_rect((uint16_t)(px + 1U), py, 8U, 10U, COLOR_SNAKE_DARK);
+        lcd_fill_rect(px, (uint16_t)(py + 1U), 10U, 8U, COLOR_SNAKE_DARK);
+        lcd_fill_rect((uint16_t)(px + 1U), (uint16_t)(py + 2U), 8U, 6U, COLOR_SNAKE_MID);
+        lcd_fill_rect((uint16_t)(px + 2U), (uint16_t)(py + 1U), 6U, 8U, COLOR_SNAKE_MID);
+        lcd_fill_rect((uint16_t)(px + 2U), (uint16_t)(py + 2U), 6U, 1U, COLOR_SNAKE_LIGHT);
+        lcd_fill_rect((uint16_t)(px + 2U), (uint16_t)(py + 3U), 1U, 4U, COLOR_SNAKE_LIGHT);
     } else {
-        eye1_x = (uint16_t)(px + 7U); eye1_y = (uint16_t)(py + 3U);
-        eye2_x = (uint16_t)(px + 7U); eye2_y = (uint16_t)(py + 7U);
+        lcd_fill_rect(px, (uint16_t)(py + 1U), 10U, 8U, COLOR_SNAKE_DARK);
+        lcd_fill_rect((uint16_t)(px + 1U), py, 8U, 10U, COLOR_SNAKE_DARK);
+        lcd_fill_rect((uint16_t)(px + 2U), (uint16_t)(py + 1U), 6U, 8U, COLOR_SNAKE_MID);
+        lcd_fill_rect((uint16_t)(px + 1U), (uint16_t)(py + 2U), 8U, 6U, COLOR_SNAKE_MID);
+        lcd_fill_rect((uint16_t)(px + 2U), (uint16_t)(py + 2U), 1U, 6U, COLOR_SNAKE_LIGHT);
+        lcd_fill_rect((uint16_t)(px + 3U), (uint16_t)(py + 2U), 4U, 1U, COLOR_SNAKE_LIGHT);
+    }
+
+    if (dir == 0U) {
+        eye1_x = (uint16_t)(px + 2U); eye1_y = (uint16_t)(py + 1U);
+        eye2_x = (uint16_t)(px + 6U); eye2_y = (uint16_t)(py + 1U);
+        nose_x = (uint16_t)(px + 4U); nose_y = py;
+    } else if (dir == 1U) {
+        eye1_x = (uint16_t)(px + 2U); eye1_y = (uint16_t)(py + 7U);
+        eye2_x = (uint16_t)(px + 6U); eye2_y = (uint16_t)(py + 7U);
+        nose_x = (uint16_t)(px + 4U); nose_y = (uint16_t)(py + 9U);
+    } else if (dir == 2U) {
+        eye1_x = (uint16_t)(px + 1U); eye1_y = (uint16_t)(py + 2U);
+        eye2_x = (uint16_t)(px + 1U); eye2_y = (uint16_t)(py + 6U);
+        nose_x = px; nose_y = (uint16_t)(py + 4U);
+    } else {
+        eye1_x = (uint16_t)(px + 7U); eye1_y = (uint16_t)(py + 2U);
+        eye2_x = (uint16_t)(px + 7U); eye2_y = (uint16_t)(py + 6U);
+        nose_x = (uint16_t)(px + 9U); nose_y = (uint16_t)(py + 4U);
     }
     lcd_fill_rect(eye1_x, eye1_y, 2U, 2U, COLOR_BLACK);
     lcd_fill_rect(eye2_x, eye2_y, 2U, 2U, COLOR_BLACK);
+    lcd_fill_rect(eye1_x, eye1_y, 1U, 1U, COLOR_WHITE);
+    lcd_fill_rect(eye2_x, eye2_y, 1U, 1U, COLOR_WHITE);
+    lcd_fill_rect(nose_x, nose_y, 1U, 1U, COLOR_RED);
 }
 
 void lcd_draw_snake_body(uint8_t x, uint8_t y)
 {
+    lcd_draw_snake_body_ex(x, y, x, y, x, y);
+}
+
+static uint8_t lcd_is_neighbor(uint8_t x, uint8_t y, uint8_t nx, uint8_t ny)
+{
+    int16_t dx = (int16_t)nx - (int16_t)x;
+    int16_t dy = (int16_t)ny - (int16_t)y;
+
+    if ((dx == 1 || dx == -1) && dy == 0) {
+        return 1U;
+    }
+    if ((dy == 1 || dy == -1) && dx == 0) {
+        return 1U;
+    }
+    return 0U;
+}
+
+static void lcd_draw_snake_round_body(uint16_t px, uint16_t py,
+                                      uint8_t open_up, uint8_t open_down,
+                                      uint8_t open_left, uint8_t open_right,
+                                      uint8_t seed)
+{
+    if (open_left) {
+        lcd_fill_rect(px, (uint16_t)(py + 1U), 6U, 8U, COLOR_SNAKE_DARK);
+    }
+    if (open_right) {
+        lcd_fill_rect((uint16_t)(px + 4U), (uint16_t)(py + 1U), 6U, 8U, COLOR_SNAKE_DARK);
+    }
+    if (open_up) {
+        lcd_fill_rect((uint16_t)(px + 1U), py, 8U, 6U, COLOR_SNAKE_DARK);
+    }
+    if (open_down) {
+        lcd_fill_rect((uint16_t)(px + 1U), (uint16_t)(py + 4U), 8U, 6U, COLOR_SNAKE_DARK);
+    }
+
+    lcd_fill_rect((uint16_t)(px + 2U), py, 6U, 10U, COLOR_SNAKE_DARK);
+    lcd_fill_rect(px, (uint16_t)(py + 2U), 10U, 6U, COLOR_SNAKE_DARK);
+    lcd_fill_rect((uint16_t)(px + 1U), (uint16_t)(py + 1U), 8U, 8U, COLOR_SNAKE_DARK);
+    lcd_fill_rect((uint16_t)(px + 2U), (uint16_t)(py + 2U), 6U, 6U, COLOR_SNAKE_MID);
+    lcd_fill_rect((uint16_t)(px + 1U), (uint16_t)(py + 4U), 8U, 2U, COLOR_SNAKE_MID);
+    lcd_fill_rect((uint16_t)(px + 4U), (uint16_t)(py + 1U), 2U, 8U, COLOR_SNAKE_MID);
+
+    if (open_left || open_right) {
+        lcd_fill_rect(px, (uint16_t)(py + 2U), 10U, 5U, COLOR_SNAKE_MID);
+        lcd_fill_rect((uint16_t)(px + 1U), (uint16_t)(py + 2U), 8U, 1U, COLOR_SNAKE_LIGHT);
+    }
+    if (open_up || open_down) {
+        lcd_fill_rect((uint16_t)(px + 2U), py, 5U, 10U, COLOR_SNAKE_MID);
+        lcd_fill_rect((uint16_t)(px + 2U), (uint16_t)(py + 1U), 1U, 8U, COLOR_SNAKE_LIGHT);
+    }
+    if (!open_up && !open_down && !open_left && !open_right) {
+        lcd_fill_rect((uint16_t)(px + 2U), (uint16_t)(py + 2U), 6U, 6U, COLOR_SNAKE_MID);
+        lcd_fill_rect((uint16_t)(px + 2U), (uint16_t)(py + 2U), 4U, 1U, COLOR_SNAKE_LIGHT);
+    }
+
+    lcd_fill_rect((uint16_t)(px + 4U), (uint16_t)(py + 7U), 3U, 1U, COLOR_SNAKE_BELLY);
+    if ((seed & 1U) == 0U) {
+        lcd_fill_rect((uint16_t)(px + 7U), (uint16_t)(py + 5U), 1U, 1U, COLOR_SNAKE_SCALE);
+        lcd_fill_rect((uint16_t)(px + 2U), (uint16_t)(py + 6U), 1U, 1U, COLOR_SNAKE_SCALE);
+    } else {
+        lcd_fill_rect((uint16_t)(px + 6U), (uint16_t)(py + 2U), 1U, 1U, COLOR_SNAKE_SCALE);
+        lcd_fill_rect((uint16_t)(px + 3U), (uint16_t)(py + 7U), 1U, 1U, COLOR_SNAKE_SCALE);
+    }
+}
+
+void lcd_draw_snake_body_ex(uint8_t x, uint8_t y,
+                            uint8_t prev_x, uint8_t prev_y,
+                            uint8_t next_x, uint8_t next_y)
+{
     uint16_t px = (uint16_t)(BOARD_X + x * CELL_SIZE + 1U);
     uint16_t py = (uint16_t)(BOARD_Y + y * CELL_SIZE + 1U);
-    lcd_fill_rect(px, py, CELL_SIZE - 2U, CELL_SIZE - 2U, COLOR_CYAN);
-    lcd_fill_rect((uint16_t)(px + 2U), (uint16_t)(py + 2U), CELL_SIZE - 6U, CELL_SIZE - 6U, COLOR_LIME);
+    uint8_t open_up = 0U;
+    uint8_t open_down = 0U;
+    uint8_t open_left = 0U;
+    uint8_t open_right = 0U;
+
+    lcd_draw_board_cell_bg(x, y);
+
+    if (lcd_is_neighbor(x, y, prev_x, prev_y)) {
+        if (prev_x < x) open_left = 1U;
+        if (prev_x > x) open_right = 1U;
+        if (prev_y < y) open_up = 1U;
+        if (prev_y > y) open_down = 1U;
+    }
+    if (lcd_is_neighbor(x, y, next_x, next_y)) {
+        if (next_x < x) open_left = 1U;
+        if (next_x > x) open_right = 1U;
+        if (next_y < y) open_up = 1U;
+        if (next_y > y) open_down = 1U;
+    }
+
+    lcd_draw_snake_round_body(px, py, open_up, open_down, open_left, open_right,
+                              (uint8_t)(x * 5U + y * 3U));
 }
 
 void lcd_draw_food(uint8_t x, uint8_t y)
