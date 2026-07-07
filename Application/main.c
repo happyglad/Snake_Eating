@@ -2,6 +2,7 @@
 #include "bsp_beep_led.h"
 #include "bsp_key.h"
 #include "bsp_lcd_game.h"
+#include "bsp_ps2.h"
 #include "bsp_touch.h"
 #include "bsp_usart.h"
 #include "snake_game.h"
@@ -44,6 +45,9 @@ int main(void)
     
     key_init();
     usart1_send_string("\r\n[System] GPIO Keys Initialized successfully.");
+
+    ps2_init();
+    usart1_send_string("\r\n[System] PS2 Receiver Initialized successfully.");
     
     /* 2. LCD and peripherals setup with profiling */
     t0 = millis();
@@ -79,15 +83,21 @@ int main(void)
     while (1) {
         KeyEvent key_evt;
         TouchEvent touch_evt;
+        char ps2_cmd;
 
         touch_set_playing(snake_game_is_playing());
         key_evt = key_scan_event();
         touch_evt = touch_scan_event();
+        ps2_cmd = ps2_scan_command();
 
         if (key_evt == KEY_EVENT_1) {
             snake_game_turn_left_or_start();
         } else if (key_evt == KEY_EVENT_2) {
             snake_game_turn_right_or_start();
+        }
+
+        if (ps2_cmd != 0) {
+            snake_game_on_command(ps2_cmd);
         }
 
         switch (touch_evt) {
