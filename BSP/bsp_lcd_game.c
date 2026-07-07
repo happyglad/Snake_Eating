@@ -13,6 +13,9 @@
 #define COLOR_START_GRID   0x10A2U
 #define COLOR_START_PANEL  0x1082U
 #define COLOR_START_FRAME  0x39E7U
+#define COLOR_BOARD_BG     0x0021U
+#define COLOR_BOARD_ALT    0x0842U
+#define COLOR_BOARD_GRID   0x18E3U
 
 static uint16_t g_lcd_id = LCDID_UNKNOWN;
 static uint8_t g_scan_mode = 0U;
@@ -27,6 +30,8 @@ static void lcd_draw_play_icon(uint16_t x, uint16_t y, uint16_t color);
 static void lcd_draw_gear_icon(uint16_t x, uint16_t y, uint16_t color);
 static void lcd_draw_trophy_icon(uint16_t x, uint16_t y);
 static void lcd_draw_softkey(uint16_t x, uint16_t y, uint16_t w);
+static void lcd_draw_board_cell_bg(uint8_t x, uint8_t y);
+static void lcd_draw_board_background(void);
 
 static void gpio_set_cfg(GPIO_TypeDef *port, uint32_t pin, uint32_t cfg)
 {
@@ -562,8 +567,47 @@ void lcd_draw_number(uint16_t x, uint16_t y, uint32_t number, uint16_t color, ui
     }
 }
 
+static void lcd_draw_board_cell_bg(uint8_t x, uint8_t y)
+{
+    uint16_t px = (uint16_t)(BOARD_X + x * CELL_SIZE + 1U);
+    uint16_t py = (uint16_t)(BOARD_Y + y * CELL_SIZE + 1U);
+    uint16_t bg = (((uint16_t)x + (uint16_t)y) & 1U) ? COLOR_BOARD_ALT : COLOR_BOARD_BG;
+
+    lcd_fill_rect(px, py, CELL_SIZE - 2U, CELL_SIZE - 2U, bg);
+    if ((((uint16_t)x * 3U + (uint16_t)y * 5U) % 11U) == 0U) {
+        lcd_fill_rect((uint16_t)(px + 7U), (uint16_t)(py + 2U), 1U, 1U, COLOR_BOARD_GRID);
+    }
+}
+
+static void lcd_draw_board_background(void)
+{
+    uint8_t x;
+    uint8_t y;
+
+    lcd_fill_rect(BOARD_X, BOARD_Y,
+                  GRID_COLS * CELL_SIZE,
+                  GRID_ROWS * CELL_SIZE, COLOR_BOARD_GRID);
+    lcd_fill_rect(BOARD_X, BOARD_Y,
+                  GRID_COLS * CELL_SIZE,
+                  GRID_ROWS * CELL_SIZE, COLOR_START_FRAME);
+    lcd_fill_rect(BOARD_X + 1U, BOARD_Y + 1U,
+                  GRID_COLS * CELL_SIZE - 2U,
+                  GRID_ROWS * CELL_SIZE - 2U, COLOR_BOARD_GRID);
+
+    for (y = 0U; y < GRID_ROWS; y++) {
+        for (x = 0U; x < GRID_COLS; x++) {
+            lcd_draw_board_cell_bg(x, y);
+        }
+    }
+}
+
 void lcd_draw_cell(uint8_t x, uint8_t y, uint16_t color)
 {
+    if (color == COLOR_BLACK) {
+        lcd_draw_board_cell_bg(x, y);
+        return;
+    }
+
     lcd_fill_rect((uint16_t)(BOARD_X + x * CELL_SIZE + 1U),
                   (uint16_t)(BOARD_Y + y * CELL_SIZE + 1U),
                   CELL_SIZE - 2U,
@@ -610,7 +654,8 @@ void lcd_draw_food(uint8_t x, uint8_t y)
 {
     uint16_t px = (uint16_t)(BOARD_X + x * CELL_SIZE + 1U);
     uint16_t py = (uint16_t)(BOARD_Y + y * CELL_SIZE + 1U);
-    lcd_fill_rect(px, py, CELL_SIZE - 2U, CELL_SIZE - 2U, COLOR_BLACK);
+
+    lcd_draw_board_cell_bg(x, y);
     lcd_fill_rect((uint16_t)(px + 3U), (uint16_t)(py + 2U), 5U, 7U, COLOR_RED);
     lcd_fill_rect((uint16_t)(px + 5U), py, 2U, 2U, COLOR_GREEN);
     lcd_fill_rect((uint16_t)(px + 2U), (uint16_t)(py + 4U), 7U, 3U, COLOR_ORANGE);
@@ -648,6 +693,25 @@ void lcd_draw_swipe_controls(void)
     }
     lcd_fill_rect(2, 226, (uint16_t)(g_lcd_width - 4U), 92, COLOR_BLACK);
     lcd_fill_rect(4, 228, (uint16_t)(g_lcd_width - 8U), 88, COLOR_START_BG);
+
+    lcd_fill_rect(112, 252, 16, 3, COLOR_START_FRAME);
+    lcd_fill_rect(118, 246, 4, 15, COLOR_START_FRAME);
+    lcd_fill_rect(116, 244, 8, 3, COLOR_CYAN);
+
+    lcd_fill_rect(112, 290, 16, 3, COLOR_START_FRAME);
+    lcd_fill_rect(118, 282, 4, 14, COLOR_START_FRAME);
+    lcd_fill_rect(116, 296, 8, 3, COLOR_CYAN);
+
+    lcd_fill_rect(82, 270, 15, 4, COLOR_START_FRAME);
+    lcd_fill_rect(82, 266, 3, 12, COLOR_CYAN);
+
+    lcd_fill_rect(143, 270, 15, 4, COLOR_START_FRAME);
+    lcd_fill_rect(155, 266, 3, 12, COLOR_CYAN);
+
+    lcd_fill_rect(104, 270, 32, 4, COLOR_START_GRID);
+    lcd_fill_rect(118, 260, 4, 28, COLOR_START_GRID);
+    lcd_fill_rect(116, 272, 8, 8, COLOR_LIME);
+    lcd_fill_rect(118, 274, 4, 4, COLOR_GREEN);
 }
 
 void lcd_draw_board(uint32_t score, uint32_t high_score)
@@ -681,15 +745,7 @@ void lcd_draw_board_ex(uint32_t score, uint32_t high_score, const char *mode)
     /* Clear active item status slot */
     lcd_fill_rect(164, 4, 76, 16, COLOR_START_PANEL);
 
-    lcd_fill_rect(BOARD_X, BOARD_Y,
-                  GRID_COLS * CELL_SIZE,
-                  GRID_ROWS * CELL_SIZE, COLOR_BLACK);
-    lcd_fill_rect(BOARD_X, BOARD_Y,
-                  GRID_COLS * CELL_SIZE,
-                  GRID_ROWS * CELL_SIZE, COLOR_WHITE);
-    lcd_fill_rect(BOARD_X + 1U, BOARD_Y + 1U,
-                  GRID_COLS * CELL_SIZE - 2U,
-                  GRID_ROWS * CELL_SIZE - 2U, COLOR_BLACK);
+    lcd_draw_board_background();
 }
 
 void lcd_update_score(uint32_t score, uint32_t high_score)
@@ -1222,7 +1278,8 @@ void lcd_draw_item(uint8_t x, uint8_t y, uint8_t type)
 {
     uint16_t px = (uint16_t)(BOARD_X + x * CELL_SIZE + 1U);
     uint16_t py = (uint16_t)(BOARD_Y + y * CELL_SIZE + 1U);
-    lcd_fill_rect(px, py, CELL_SIZE - 2U, CELL_SIZE - 2U, COLOR_BLACK);
+
+    lcd_draw_board_cell_bg(x, y);
     
     switch (type) {
         case 1U: /* ITEM_SPEED_UP - Yellow Lightning/Arrow */
