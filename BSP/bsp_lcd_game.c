@@ -900,7 +900,7 @@ void lcd_show_start_ex(uint32_t high_score, const char *mode)
     lcd_draw_touch_controls();
 }
 
-void lcd_show_start_revamp(uint8_t focus, uint32_t high_score)
+void lcd_show_start_revamp(uint8_t focus, uint32_t high_score, const char *high_label)
 {
     lcd_clear(COLOR_BLACK);
     
@@ -923,10 +923,10 @@ void lcd_show_start_revamp(uint8_t focus, uint32_t high_score)
     lcd_draw_chinese_text(78, 146, "游戏设置", (focus == 1U) ? COLOR_YELLOW : COLOR_WHITE, COLOR_START_PANEL);
     
     /* Render high score stats */
-    lcd_draw_start_panel(32, 184, 176, 28, 0U);
+    lcd_draw_start_panel(32, 184, 176, 28, (focus == 2U));
     lcd_draw_trophy_icon(46, 188);
-    lcd_draw_chinese_text(72, 190, "最高记录:", COLOR_CYAN, COLOR_START_PANEL);
-    lcd_draw_number(152, 190, high_score, COLOR_YELLOW, COLOR_START_PANEL);
+    lcd_draw_chinese_text(68, 190, high_label, (focus == 2U) ? COLOR_YELLOW : COLOR_CYAN, COLOR_START_PANEL);
+    lcd_draw_number(160, 190, high_score, COLOR_YELLOW, COLOR_START_PANEL);
     
     /* Left button: "切换" */
     lcd_draw_softkey(8, 272, 82);

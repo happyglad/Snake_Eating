@@ -30,6 +30,13 @@ typedef enum {
 } GameMode;
 
 typedef enum {
+    HIGH_SCORE_ALL = 0,
+    HIGH_SCORE_NORMAL,
+    HIGH_SCORE_BLOCKS,
+    HIGH_SCORE_TIME_LIMIT
+} HighScoreView;
+
+typedef enum {
     END_REASON_NONE = 0,
     END_REASON_WALL,
     END_REASON_BODY,
@@ -69,7 +76,7 @@ static const Point g_obstacles[OBSTACLE_COUNT] = {
 
 static GameState g_game_state = STATE_START_SCREEN;
 static GameMode g_game_mode = GAME_MODE_NORMAL;
-static uint8_t g_main_start_focus = 0U; /* 0: 开始游戏, 1: 游戏设置 */
+static uint8_t g_main_start_focus = 0U; /* 0: start, 1: settings, 2: high score */
 static uint8_t g_settings_focus = 0U;   /* 0: 模式, 1: 道具, 2: 返回 */
 static uint8_t g_items_enabled = 1U;     /* 0: 关闭, 1: 开启 */
 
@@ -78,7 +85,9 @@ static SnakeDir g_next_dir = DIR_RIGHT;
 static uint8_t g_dir_changed_this_tick = 0;
 
 static uint32_t g_score = 0;
+static uint32_t g_high_scores[4] = {0U, 0U, 0U, 0U};
 static uint32_t g_high_score = 0;
+static uint8_t g_high_score_view = HIGH_SCORE_ALL;
 static uint32_t g_rand_seed = 0x5A5A5A5AUL;
 static uint32_t g_last_tick_time = 0;
 static uint32_t g_game_start_time = 0;
@@ -132,6 +141,40 @@ static const char *game_mode_event_name(void)
     if (g_game_mode == GAME_MODE_BLOCKS) return "blocks";
     if (g_game_mode == GAME_MODE_TIME_LIMIT) return "time_limit";
     return "normal";
+}
+
+static uint8_t high_score_index_for_mode(GameMode mode)
+{
+    if (mode == GAME_MODE_BLOCKS) {
+        return HIGH_SCORE_BLOCKS;
+    }
+    if (mode == GAME_MODE_TIME_LIMIT) {
+        return HIGH_SCORE_TIME_LIMIT;
+    }
+    return HIGH_SCORE_NORMAL;
+}
+
+static const char *high_score_view_name(void)
+{
+    switch (g_high_score_view) {
+        case HIGH_SCORE_NORMAL:     return "普通最高:";
+        case HIGH_SCORE_BLOCKS:     return "障碍最高:";
+        case HIGH_SCORE_TIME_LIMIT: return "限时最高:";
+        default:                    return "历史最高:";
+    }
+}
+
+static uint32_t displayed_high_score(void)
+{
+    if (g_high_score_view <= HIGH_SCORE_TIME_LIMIT) {
+        return g_high_scores[g_high_score_view];
+    }
+    return g_high_scores[HIGH_SCORE_ALL];
+}
+
+static uint32_t current_mode_high_score(void)
+{
+    return g_high_scores[high_score_index_for_mode(g_game_mode)];
 }
 
 static const char *end_reason_name(EndReason reason)
@@ -344,8 +387,14 @@ static void send_end_event(void)
 {
     usart1_send_string("\r\nSNAKE,END,score=");
     game_usart_send_number(g_score);
+    usart1_send_string(",mode=");
+    usart1_send_string(game_mode_event_name());
     usart1_send_string(",high=");
     game_usart_send_number(g_high_score);
+    usart1_send_string(",high_all=");
+    game_usart_send_number(g_high_scores[HIGH_SCORE_ALL]);
+    usart1_send_string(",high_mode=");
+    game_usart_send_number(current_mode_high_score());
     usart1_send_string(",duration=");
     game_usart_send_number(game_duration_seconds());
     usart1_send_string(",reason=");
@@ -372,6 +421,7 @@ static void start_new_game(void)
     uint32_t ta, tb, tc;
     
     g_score = 0;
+    g_high_score = current_mode_high_score();
     g_snake_len = INITIAL_SNAKE_LEN;
     g_end_reason = END_REASON_NONE;
     
@@ -435,13 +485,23 @@ static void start_new_game(void)
 /* Handle game-over transition */
 static void trigger_game_over(EndReason reason)
 {
+    uint8_t high_updated = 0U;
+
     g_game_state = STATE_GAME_OVER;
     g_end_reason = reason;
     
     /* Save high score to flash if updated */
-    if (g_score > g_high_score) {
-        g_high_score = g_score;
-        flash_save_high_score(g_high_score);
+    if (g_score > current_mode_high_score()) {
+        g_high_scores[high_score_index_for_mode(g_game_mode)] = g_score;
+        high_updated = 1U;
+    }
+    if (g_score > g_high_scores[HIGH_SCORE_ALL]) {
+        g_high_scores[HIGH_SCORE_ALL] = g_score;
+        high_updated = 1U;
+    }
+    g_high_score = current_mode_high_score();
+    if (high_updated) {
+        flash_save_high_scores(g_high_scores);
     }
     
     send_end_event();
@@ -573,12 +633,14 @@ static void move_snake(void)
 void snake_game_init(void)
 {
     g_rand_seed = 0x19B3E2D5UL ^ millis();
-    g_high_score = flash_load_high_score();
+    flash_load_high_scores(g_high_scores);
+    g_high_score = displayed_high_score();
     g_game_state = STATE_START_SCREEN;
     g_start_requested = 0;
     g_main_start_focus = 0U;
+    g_high_score_view = HIGH_SCORE_ALL;
     g_settings_focus = 0U;
-    lcd_show_start_revamp(g_main_start_focus, g_high_score);
+    lcd_show_start_revamp(g_main_start_focus, displayed_high_score(), high_score_view_name());
 }
 
 void snake_game_on_command(char cmd)
@@ -591,16 +653,19 @@ void snake_game_on_command(char cmd)
         if (cmd == 'S' || cmd == 's') {
             if (g_main_start_focus == 0U) {
                 g_start_requested = 1U;
-            } else {
+            } else if (g_main_start_focus == 1U) {
                 g_game_state = STATE_SETTINGS_SCREEN;
                 g_settings_focus = 0U;
                 lcd_show_settings(g_settings_focus, game_mode_name(), g_items_enabled);
+            } else {
+                g_high_score_view = (uint8_t)((g_high_score_view + 1U) % 4U);
+                lcd_show_start_revamp(g_main_start_focus, displayed_high_score(), high_score_view_name());
             }
             return;
         }
         if (cmd == 'B' || cmd == 'b' || cmd == 'M' || cmd == 'm') {
-            g_main_start_focus = (g_main_start_focus == 0U) ? 1U : 0U;
-            lcd_show_start_revamp(g_main_start_focus, g_high_score);
+            g_main_start_focus = (uint8_t)((g_main_start_focus + 1U) % 3U);
+            lcd_show_start_revamp(g_main_start_focus, displayed_high_score(), high_score_view_name());
             return;
         }
     }
@@ -623,7 +688,7 @@ void snake_game_on_command(char cmd)
             } else {
                 /* Back to main start screen */
                 g_game_state = STATE_START_SCREEN;
-                lcd_show_start_revamp(g_main_start_focus, g_high_score);
+                lcd_show_start_revamp(g_main_start_focus, displayed_high_score(), high_score_view_name());
             }
             return;
         }
@@ -641,7 +706,7 @@ void snake_game_on_command(char cmd)
         if (cmd == 'B' || cmd == 'b' || cmd == 'M' || cmd == 'm') {
             g_game_state = STATE_START_SCREEN;
             g_main_start_focus = 0U;
-            lcd_show_start_revamp(g_main_start_focus, g_high_score);
+            lcd_show_start_revamp(g_main_start_focus, displayed_high_score(), high_score_view_name());
             return;
         }
     }

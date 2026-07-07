@@ -52,7 +52,7 @@ void lcd_update_status_ex(uint32_t score, uint32_t high_score, uint32_t duration
 
 void lcd_show_start(uint32_t high_score);
 void lcd_show_start_ex(uint32_t high_score, const char *mode);
-void lcd_show_start_revamp(uint8_t focus, uint32_t high_score);
+void lcd_show_start_revamp(uint8_t focus, uint32_t high_score, const char *high_label);
 void lcd_show_settings(uint8_t focus, const char *mode, uint8_t items_enabled);
 void lcd_show_game_over(uint32_t score, uint32_t high_score);
 void lcd_show_game_over_ex(uint32_t score, uint32_t high_score, uint32_t duration, const char *reason);

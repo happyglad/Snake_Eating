@@ -55,20 +55,50 @@ static void flash_program_word(uint32_t addr, uint32_t data)
 
 uint32_t flash_load_high_score(void)
 {
-    uint32_t magic = *(__IO uint32_t *)HIGH_SCORE_PAGE_ADDR;
-    uint32_t score = *(__IO uint32_t *)(HIGH_SCORE_PAGE_ADDR + 4U);
-
-    if (magic != HIGH_SCORE_MAGIC || score > 99990UL) {
-        return 0;
-    }
-    return score;
+    uint32_t scores[4];
+    flash_load_high_scores(scores);
+    return scores[0];
 }
 
 void flash_save_high_score(uint32_t score)
 {
+    uint32_t scores[4] = {0U, 0U, 0U, 0U};
+
+    flash_load_high_scores(scores);
+    scores[0] = score;
+    flash_save_high_scores(scores);
+}
+
+void flash_load_high_scores(uint32_t scores[4])
+{
+    uint8_t i;
+    uint32_t magic = *(__IO uint32_t *)HIGH_SCORE_PAGE_ADDR;
+
+    for (i = 0U; i < 4U; i++) {
+        scores[i] = 0U;
+    }
+
+    if (magic != HIGH_SCORE_MAGIC) {
+        return;
+    }
+
+    for (i = 0U; i < 4U; i++) {
+        uint32_t score = *(__IO uint32_t *)(HIGH_SCORE_PAGE_ADDR + 4U + ((uint32_t)i * 4U));
+        if (score <= 99990UL) {
+            scores[i] = score;
+        }
+    }
+}
+
+void flash_save_high_scores(const uint32_t scores[4])
+{
+    uint8_t i;
+
     flash_unlock();
     flash_erase_page(HIGH_SCORE_PAGE_ADDR);
     flash_program_word(HIGH_SCORE_PAGE_ADDR, HIGH_SCORE_MAGIC);
-    flash_program_word(HIGH_SCORE_PAGE_ADDR + 4U, score);
+    for (i = 0U; i < 4U; i++) {
+        flash_program_word(HIGH_SCORE_PAGE_ADDR + 4U + ((uint32_t)i * 4U), scores[i]);
+    }
     flash_lock();
 }

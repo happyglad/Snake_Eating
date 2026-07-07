@@ -27,6 +27,55 @@ ARROW_MAP = {
     b"M": b"R",
 }
 
+MODE_ORDER = ["all", "normal", "blocks", "time_limit"]
+MODE_LABELS = {
+    "all": "历史",
+    "normal": "普通",
+    "blocks": "障碍",
+    "time_limit": "限时",
+}
+
+
+def normalize_mode(value):
+    value = str(value or "normal").strip().lower()
+    aliases = {
+        "block": "blocks",
+        "blocks": "blocks",
+        "time": "time_limit",
+        "time_limit": "time_limit",
+        "timelimit": "time_limit",
+        "normal": "normal",
+    }
+    return aliases.get(value, value)
+
+
+def build_view(name, sessions):
+    if name == "all":
+        rows = list(sessions)
+    else:
+        rows = [row for row in sessions if normalize_mode(row.get("mode")) == name]
+    rankings = sorted(
+        rows,
+        key=lambda row: (row["score"], row["duration"], row["index"]),
+        reverse=True,
+    )[:20]
+    recent = rows[-10:]
+    avg_score = sum(row["score"] for row in rows) / len(rows) if rows else 0
+    avg_duration = sum(row["duration"] for row in rows) / len(rows) if rows else 0
+    return {
+        "key": name,
+        "label": MODE_LABELS.get(name, name),
+        "rankings": rankings,
+        "recent": recent,
+        "summary": {
+            "games": len(rows),
+            "avg_score": round(avg_score, 1),
+            "avg_duration": round(avg_duration, 1),
+            "best_score": rankings[0]["score"] if rankings else 0,
+            "last_reason": rows[-1]["reason"] if rows else "",
+        },
+    }
+
 
 class SnakeStats:
     def __init__(self, data_file):
@@ -67,7 +116,7 @@ class SnakeStats:
                 continue
             loaded.append({
                 "index": int_field(row, "index", i),
-                "mode": str(row.get("mode", "normal")),
+                "mode": normalize_mode(row.get("mode", "normal")),
                 "score": int_field(row, "score", 0),
                 "high": int_field(row, "high", 0),
                 "duration": int_field(row, "duration", 0),
@@ -95,23 +144,13 @@ class SnakeStats:
     def snapshot(self):
         with self.lock:
             sessions = list(self.sessions)
-            ranked = sorted(
-                sessions,
-                key=lambda row: (row["score"], row["duration"], row["index"]),
-                reverse=True,
-            )[:20]
-            avg_score = sum(row["score"] for row in sessions) / len(sessions) if sessions else 0
-            avg_duration = sum(row["duration"] for row in sessions) / len(sessions) if sessions else 0
+            views = {name: build_view(name, sessions) for name in MODE_ORDER}
             return {
                 "current": dict(self.current),
                 "sessions": sessions[-20:],
-                "rankings": ranked,
-                "summary": {
-                    "games": len(sessions),
-                    "avg_score": round(avg_score, 1),
-                    "avg_duration": round(avg_duration, 1),
-                    "best_score": ranked[0]["score"] if ranked else 0,
-                },
+                "rankings": views["all"]["rankings"],
+                "summary": views["all"]["summary"],
+                "views": views,
                 "events": list(self.events[-30:]),
             }
 
@@ -123,7 +162,7 @@ class SnakeStats:
 
             if event_name == "START":
                 self.current.update({
-                    "mode": fields.get("mode", self.current["mode"]),
+                    "mode": normalize_mode(fields.get("mode", self.current["mode"])),
                     "score": 0,
                     "length": 4,
                     "duration": 0,
@@ -140,7 +179,9 @@ class SnakeStats:
                 high = int_field(fields, "high", self.current["high"])
                 duration = int_field(fields, "duration", self.current["duration"])
                 reason = fields.get("reason", "end")
+                mode = normalize_mode(fields.get("mode", self.current["mode"]))
                 self.current.update({
+                    "mode": mode,
                     "score": score,
                     "high": high,
                     "duration": duration,
@@ -149,7 +190,7 @@ class SnakeStats:
                 })
                 self.sessions.append({
                     "index": len(self.sessions) + 1,
-                    "mode": self.current["mode"],
+                    "mode": mode,
                     "score": score,
                     "high": high,
                     "duration": duration,
@@ -225,67 +266,27 @@ INDEX_HTML = """<!doctype html>
       --line: #314048;
     }
     * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: "Segoe UI", Arial, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-    }
-    header {
-      height: 72px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 28px;
-      background: #141b20;
-      border-bottom: 1px solid var(--line);
-    }
+    body { margin: 0; font-family: "Segoe UI", Arial, sans-serif; background: var(--bg); color: var(--text); }
+    header { height: 72px; display: flex; align-items: center; justify-content: space-between; padding: 0 28px; background: #141b20; border-bottom: 1px solid var(--line); }
     h1 { margin: 0; font-size: 24px; font-weight: 700; }
     .status { color: var(--muted); font-size: 14px; }
-    main { padding: 24px; max-width: 1180px; margin: 0 auto; }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
-      gap: 14px;
-    }
-    .card {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 16px;
-      min-height: 104px;
-    }
+    main { padding: 24px; max-width: 1240px; margin: 0 auto; }
+    .grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; min-height: 104px; }
     .label { color: var(--muted); font-size: 13px; text-transform: uppercase; }
-    .hint { margin-top: 6px; color: var(--muted); font-size: 13px; line-height: 1.5; }
     .value { margin-top: 10px; font-size: 34px; font-weight: 800; }
     .green { color: var(--green); }
     .cyan { color: var(--cyan); }
     .yellow { color: var(--yellow); }
-    .red { color: var(--red); }
-    .wide {
-      margin-top: 16px;
-      display: grid;
-      grid-template-columns: 1.1fr 0.9fr;
-      gap: 16px;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 10px;
-      font-size: 14px;
-    }
-    th, td {
-      padding: 9px 8px;
-      border-bottom: 1px solid var(--line);
-      text-align: left;
-    }
+    .wide { margin-top: 16px; display: grid; grid-template-columns: 1.15fr 0.85fr; gap: 16px; }
+    .tabs { display: flex; gap: 8px; margin: 18px 0 0; flex-wrap: wrap; }
+    .tab { border: 1px solid var(--line); background: var(--panel); color: var(--text); border-radius: 6px; padding: 8px 14px; cursor: pointer; }
+    .tab.active { border-color: var(--cyan); color: var(--cyan); background: #14242a; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+    th, td { padding: 9px 8px; border-bottom: 1px solid var(--line); text-align: left; }
     th { color: var(--muted); font-weight: 600; }
-    .bars { margin-top: 12px; display: grid; gap: 9px; }
-    .bar-row { display: grid; grid-template-columns: 42px 1fr 46px; gap: 10px; align-items: center; }
-    .bar-track { height: 16px; background: var(--panel-2); border-radius: 4px; overflow: hidden; }
-    .bar-fill { height: 100%; background: var(--cyan); min-width: 2px; }
     .events { color: var(--muted); font-family: Consolas, monospace; font-size: 13px; line-height: 1.6; max-height: 280px; overflow: auto; }
-    @media (max-width: 820px) {
+    @media (max-width: 860px) {
       .grid, .wide { grid-template-columns: 1fr; }
       header { padding: 0 18px; }
       main { padding: 16px; }
@@ -300,30 +301,37 @@ INDEX_HTML = """<!doctype html>
   <main>
     <section class="grid">
       <div class="card"><div class="label">当前分数</div><div class="value yellow" id="score">0</div></div>
-      <div class="card"><div class="label">历史最高分</div><div class="value cyan" id="high">0</div></div>
+      <div class="card"><div class="label">当前最高</div><div class="value cyan" id="high">0</div></div>
       <div class="card"><div class="label">本局时长</div><div class="value green"><span id="duration">0</span>秒</div></div>
       <div class="card"><div class="label">模式 / 状态</div><div class="value" id="mode">普通 / 空闲</div></div>
     </section>
+
+    <div class="tabs" id="tabs"></div>
+
     <section class="wide">
       <div class="card">
-        <div class="label">最佳 20 次成绩</div>
+        <div class="label" id="rankingTitle">最佳 20 次成绩</div>
         <table>
           <thead><tr><th>排名</th><th>模式</th><th>分数</th><th>时长</th><th>结束时间</th><th>原因</th></tr></thead>
           <tbody id="ranking"></tbody>
         </table>
       </div>
       <div class="card">
-        <div class="label">游戏时长统计</div>
-        <div class="hint">显示最近 10 局已结束游戏的时长，单位为秒；横条长度按这 10 局中最长时长等比例显示。</div>
-        <div class="bars" id="bars"></div>
+        <div class="label" id="recentTitle">最近 10 次记录</div>
+        <table>
+          <thead><tr><th>局数</th><th>模式</th><th>分数</th><th>时长</th><th>时间</th></tr></thead>
+          <tbody id="recent"></tbody>
+        </table>
       </div>
     </section>
+
     <section class="wide">
       <div class="card">
-        <div class="label">总体统计</div>
+        <div class="label" id="summaryTitle">总体统计</div>
         <table>
           <tbody>
             <tr><th>累计局数</th><td id="games">0</td></tr>
+            <tr><th>最高分</th><td id="bestScore">0</td></tr>
             <tr><th>平均分数</th><td id="avgScore">0</td></tr>
             <tr><th>平均时长</th><td id="avgDuration">0秒</td></tr>
             <tr><th>上次结束原因</th><td id="reason"></td></tr>
@@ -337,37 +345,66 @@ INDEX_HTML = """<!doctype html>
     </section>
   </main>
   <script>
+    let selectedView = 'all';
+
     async function load() {
       const res = await fetch('/api/state');
       const data = await res.json();
       const c = data.current;
+      const views = data.views || {};
+      const view = views[selectedView] || views.all || { label: '历史', rankings: [], recent: [], summary: {} };
+
       document.getElementById('score').textContent = c.score;
       document.getElementById('high').textContent = c.high;
       document.getElementById('duration').textContent = c.duration;
       document.getElementById('mode').textContent = modeText(c.mode) + ' / ' + stateText(c.state);
-      document.getElementById('reason').textContent = reasonText(c.reason);
-      document.getElementById('games').textContent = data.summary.games;
-      document.getElementById('avgScore').textContent = data.summary.avg_score;
-      document.getElementById('avgDuration').textContent = data.summary.avg_duration + '秒';
       document.getElementById('status').textContent = c.last_event || '等待串口事件';
 
-      document.getElementById('ranking').innerHTML = data.rankings.map((row, i) =>
-        `<tr><td>${i + 1}</td><td>${modeText(row.mode)}</td><td>${row.score}</td><td>${row.duration}秒</td><td>${row.ended_at_date || ''} ${row.ended_at || ''}</td><td>${reasonText(row.reason)}</td></tr>`
-      ).join('') || '<tr><td colspan="6">暂无已结束游戏</td></tr>';
-
-      const maxDuration = Math.max(1, ...data.sessions.map(row => row.duration));
-      document.getElementById('bars').innerHTML = data.sessions.slice(-10).map(row => {
-        const width = Math.max(3, Math.round(row.duration * 100 / maxDuration));
-        return `<div class="bar-row"><span>#${row.index}</span><div class="bar-track"><div class="bar-fill" style="width:${width}%"></div></div><span>${row.duration}秒</span></div>`;
-      }).join('') || '<div class="status">暂无时长数据</div>';
+      renderTabs(views);
+      renderView(view);
 
       document.getElementById('events').innerHTML = data.events.slice().reverse().map(row =>
-        `<div>${row.time} ${row.raw}</div>`
+        `<div>${row.time} ${escapeHtml(row.raw)}</div>`
       ).join('');
     }
 
+    function renderTabs(views) {
+      const order = ['all', 'normal', 'blocks', 'time_limit'];
+      document.getElementById('tabs').innerHTML = order.map(key => {
+        const view = views[key] || { label: modeText(key), summary: { games: 0 } };
+        const active = key === selectedView ? ' active' : '';
+        return `<button class="tab${active}" onclick="selectView('${key}')">${view.label} (${view.summary.games || 0})</button>`;
+      }).join('');
+    }
+
+    function renderView(view) {
+      const label = view.label || '历史';
+      const summary = view.summary || {};
+      document.getElementById('rankingTitle').textContent = `${label}最佳 20 次成绩`;
+      document.getElementById('recentTitle').textContent = `${label}最近 10 次记录`;
+      document.getElementById('summaryTitle').textContent = `${label}总体统计`;
+      document.getElementById('games').textContent = summary.games || 0;
+      document.getElementById('bestScore').textContent = summary.best_score || 0;
+      document.getElementById('avgScore').textContent = summary.avg_score || 0;
+      document.getElementById('avgDuration').textContent = (summary.avg_duration || 0) + '秒';
+      document.getElementById('reason').textContent = reasonText(summary.last_reason);
+
+      document.getElementById('ranking').innerHTML = view.rankings.map((row, i) =>
+        `<tr><td>${i + 1}</td><td>${modeText(row.mode)}</td><td>${row.score}</td><td>${row.duration}秒</td><td>${row.ended_at_date || ''} ${row.ended_at || ''}</td><td>${reasonText(row.reason)}</td></tr>`
+      ).join('') || '<tr><td colspan="6">暂无已结束游戏</td></tr>';
+
+      document.getElementById('recent').innerHTML = view.recent.slice().reverse().map(row =>
+        `<tr><td>#${row.index}</td><td>${modeText(row.mode)}</td><td>${row.score}</td><td>${row.duration}秒</td><td>${row.ended_at_date || ''} ${row.ended_at || ''}</td></tr>`
+      ).join('') || '<tr><td colspan="5">暂无最近记录</td></tr>';
+    }
+
+    function selectView(key) {
+      selectedView = key;
+      load();
+    }
+
     function modeText(value) {
-      return { normal: '普通', blocks: '障碍' }[value] || value || '';
+      return { all: '历史', normal: '普通', blocks: '障碍', time_limit: '限时' }[value] || value || '';
     }
 
     function stateText(value) {
@@ -375,8 +412,13 @@ INDEX_HTML = """<!doctype html>
     }
 
     function reasonText(value) {
-      return { wall: '撞墙', body: '撞到自己', block: '撞到障碍', end: '结束' }[value] || value || '';
+      return { wall: '撞墙', body: '撞到自己', block: '撞到障碍', timeout: '时间结束', end: '结束' }[value] || value || '';
     }
+
+    function escapeHtml(value) {
+      return String(value || '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[ch]));
+    }
+
     load();
     setInterval(load, 700);
   </script>
